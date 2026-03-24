@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Command Board - Kingdom Hearts</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Menu principal -->
+  <div id="main-menu" class="screen active">
+    <div class="menu-container">
+      <h1 class="game-title">Command Board</h1>
+      <div class="menu-options">
+        <button id="btn-start" class="menu-btn">Nouvelle Partie</button>
+        <button id="btn-rules" class="menu-btn">Regles</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Setup partie -->
+  <div id="setup-screen" class="screen">
+    <div class="setup-container">
+      <h2>Configuration de la Partie</h2>
+      <div class="setup-field">
+        <label>Nom du joueur :</label>
+        <input type="text" id="player-name" value="Ventus" maxlength="12">
+      </div>
+      <div class="setup-field">
+        <label>Nombre d'adversaires :</label>
+        <select id="opponent-count">
+          <option value="1">1</option>
+          <option value="2" selected>2</option>
+        </select>
+      </div>
+      <div class="setup-field">
+        <label>Objectif GP :</label>
+        <select id="gp-goal">
+          <option value="5000">5 000 GP</option>
+          <option value="7500" selected>7 500 GP</option>
+          <option value="10000">10 000 GP</option>
+        </select>
+      </div>
+      <div class="setup-field">
+        <label>Plateau :</label>
+        <select id="board-select">
+          <option value="keyblade">Keyblade Board</option>
+        </select>
+      </div>
+      <button id="btn-play" class="menu-btn">Jouer !</button>
+      <button id="btn-back-menu" class="menu-btn secondary">Retour</button>
+    </div>
+  </div>
+
+  <!-- Ecran de jeu -->
+  <div id="game-screen" class="screen">
+    <!-- HUD supérieur -->
+    <div id="hud-top">
+      <div id="turn-info">Tour <span id="turn-number">1</span></div>
+      <div id="current-player-info">
+        <span id="current-player-name"></span> -
+        <span id="current-player-gp">0</span> GP
+        (Net: <span id="current-player-net">0</span>)
+      </div>
+      <div id="gp-goal-display">Objectif : <span id="goal-value">7500</span> GP</div>
+    </div>
+
+    <!-- Zone plateau -->
+    <div id="board-container">
+      <canvas id="board-canvas"></canvas>
+      <!-- Overlay pour les choix de direction -->
+      <div id="direction-overlay" class="overlay hidden">
+        <div class="overlay-content">
+          <h3>Choisissez une direction</h3>
+          <div id="direction-buttons"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HUD inférieur - Main du joueur -->
+    <div id="hud-bottom">
+      <div id="player-hand">
+        <div class="hand-label">Main :</div>
+        <div id="hand-cards"></div>
+      </div>
+      <div id="action-panel">
+        <button id="btn-roll" class="action-btn">Lancer (1 de)</button>
+        <button id="btn-roll2" class="action-btn" disabled>Lancer x2</button>
+        <button id="btn-roll3" class="action-btn" disabled>Lancer x3</button>
+        <button id="btn-use-magic" class="action-btn magic-btn" disabled>Magie</button>
+        <button id="btn-end-turn" class="action-btn" disabled>Fin de tour</button>
+      </div>
+    </div>
+
+    <!-- Panneau joueurs -->
+    <div id="players-panel">
+      <div id="players-list"></div>
+    </div>
+
+    <!-- Panneau checkpoints -->
+    <div id="checkpoints-panel">
+      <div class="checkpoint red" id="cp-red"></div>
+      <div class="checkpoint blue" id="cp-blue"></div>
+      <div class="checkpoint yellow" id="cp-yellow"></div>
+      <div class="checkpoint green" id="cp-green"></div>
+    </div>
+
+    <!-- Overlays de jeu -->
+    <div id="tile-action-overlay" class="overlay hidden">
+      <div class="overlay-content" id="tile-action-content"></div>
+    </div>
+
+    <div id="magic-overlay" class="overlay hidden">
+      <div class="overlay-content" id="magic-content"></div>
+    </div>
+
+    <div id="event-overlay" class="overlay hidden">
+      <div class="overlay-content" id="event-content"></div>
+    </div>
+
+    <div id="dice-overlay" class="overlay hidden">
+      <div class="dice-display" id="dice-display"></div>
+    </div>
+
+    <!-- Message log -->
+    <div id="message-log">
+      <div id="log-entries"></div>
+    </div>
+  </div>
+
+  <!-- Ecran de victoire -->
+  <div id="victory-screen" class="screen">
+    <div class="victory-container">
+      <h1 class="victory-title">Victoire !</h1>
+      <div id="winner-name"></div>
+      <div id="final-scores"></div>
+      <button id="btn-back-to-menu" class="menu-btn">Retour au menu</button>
+    </div>
+  </div>
+
+  <!-- Ecran des regles -->
+  <div id="rules-screen" class="screen">
+    <div class="rules-container">
+      <h2>Regles du Command Board</h2>
+      <div class="rules-text">
+        <h3>Objectif</h3>
+        <p>Atteignez l'objectif de GP (Valeur Nette) et revenez sur la case Depart pour gagner !</p>
+        <h3>Tour de jeu</h3>
+        <p>1. Jouez une carte magie (optionnel)</p>
+        <p>2. Choisissez 1 a 3 cartes pour lancer les des</p>
+        <p>3. Deplacez-vous et resolvez la case d'arrivee</p>
+        <h3>Cases</h3>
+        <p><strong>Depart :</strong> Restaure la main, bonus GP si checkpoints actives.</p>
+        <p><strong>Standard :</strong> Achetez-la en placant une carte et en payant des GP.</p>
+        <p><strong>Checkpoint :</strong> 4 couleurs a activer pour le bonus de tour.</p>
+        <p><strong>Evenement :</strong> Effets aleatoires (bonus, degats, joker...).</p>
+        <h3>Peage</h3>
+        <p>Atterrir sur la case d'un adversaire vous fait payer un peage.</p>
+        <p>Vous pouvez aussi racheter la case de force (5x sa valeur).</p>
+        <h3>Cartes Magie</h3>
+        <p><strong>Foudre :</strong> Etourdit un adversaire (passe son tour).</p>
+        <p><strong>Aimant :</strong> Attire un adversaire sur votre case.</p>
+        <p><strong>Soin :</strong> Recuperez des GP.</p>
+      </div>
+      <button id="btn-back-rules" class="menu-btn">Retour</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
