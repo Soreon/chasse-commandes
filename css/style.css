@@ -424,10 +424,10 @@ body {
 /* Message Log */
 #message-log {
   position: absolute;
-  bottom: 80px;
+  bottom: 10px;
   left: 10px;
   width: 280px;
-  max-height: 200px;
+  max-height: 180px;
   overflow-y: auto;
   z-index: 10;
   pointer-events: none;
