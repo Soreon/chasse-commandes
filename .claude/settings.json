@@ -1,0 +1,9 @@
+{
+  "env": {
+    "HTTP_PROXY": "http://10.40.10.225:8080",
+    "HTTPS_PROXY": "http://10.40.10.225:8080",
+    "PATH": "C:\\Users\\bacheletj\\nvm\\v22.19.0;C:\\Users\\bacheletj\\OneDrive - GROUPE SANEF\\Documents\\Programmes\\python;C:\\Users\\bacheletj\\OneDrive - GROUPE SANEF\\Documents\\Programmes\\python\\Scripts;${PATH}",
+    "CLAUDE_CODE_GIT_BASH_PATH": "C:\\Users\\bacheletj\\AppData\\Local\\Programs\\Git\\bin\\bash.exe",
+    "PYTHONIOENCODING": "utf-8"
+  }
+}

@@ -71,7 +71,7 @@ export function createKeybladeBoard() {
   // Coordonnees en % pour le rendu responsive
   const tiles = [
     // === Boucle principale ===
-    { id: 0, type: TileType.START, x: 50, y: 85, connections: [1, 25] },
+    { id: 0, type: TileType.START, x: 50, y: 85, connections: [1, 27] },
     { id: 1, type: TileType.NORMAL, x: 40, y: 80, connections: [0, 2] },
     { id: 2, type: TileType.NORMAL, x: 30, y: 75, connections: [1, 3] },
     { id: 3, type: TileType.CHECKPOINT_RED, x: 22, y: 68, connections: [2, 4] },

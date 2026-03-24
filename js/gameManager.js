@@ -145,7 +145,7 @@ export class GameManager {
   // === PHASE 2 : LANCER DE DES ===
 
   // Le joueur choisit combien de des lancer (et sacrifie des cartes)
-  roll(sacrificedCardIds = []) {
+  async roll(sacrificedCardIds = []) {
     const player = this.currentPlayer;
 
     // Retirer les cartes sacrifiees
@@ -171,11 +171,10 @@ export class GameManager {
 
     this.log(`${player.name} lance ${diceCount} de(s) : [${rolls.join(', ')}] = ${total}`);
 
-    // Afficher les des
-    this.showDice(rolls);
-
-    // Commencer le deplacement
+    // Afficher les des puis commencer le deplacement
     this.phase = 'moving';
+    this.showDice(rolls);
+    await this.delay(1300);
     this.startMovement(total);
   }
 
@@ -239,8 +238,10 @@ export class GameManager {
     player.previousPosition = fromTile;
     player.position = nextTileId;
 
-    // Effets de passage (pas d'arret)
-    this.onPass(nextTileId);
+    // Effets de passage seulement si on ne s'arrete PAS ici (pas la derniere case)
+    if (stepsRemaining > 1) {
+      this.onPass(nextTileId);
+    }
 
     // Verifier Captain Dark/Justice transmission
     this.checkCaptainTransfer(player);
