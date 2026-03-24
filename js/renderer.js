@@ -19,8 +19,15 @@ export class Renderer {
     this.offsetY = 0;
     this.boardRows = 0;
     this.boardCols = 0;
+    // Derniers parametres de rendu pour redessiner au resize
+    this._lastRenderArgs = null;
     this.resize();
-    window.addEventListener('resize', () => this.resize());
+    window.addEventListener('resize', () => {
+      this.resize();
+      if (this._lastRenderArgs) {
+        this.render(...this._lastRenderArgs);
+      }
+    });
   }
 
   resize() {
@@ -59,6 +66,7 @@ export class Renderer {
 
   // === Rendu principal ===
   render(boardData, players, currentPlayerId, animState) {
+    this._lastRenderArgs = [boardData, players, currentPlayerId, animState];
     const { tiles, links, rows, cols } = boardData;
     const ctx = this.ctx;
 
