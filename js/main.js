@@ -339,27 +339,30 @@ function showOverlay(type, tile, player, board, callback) {
 
 // === Choix de direction ===
 
-function showDirectionChoice(possibleTiles, callback) {
+function showDirectionChoice(moves, callback) {
   const overlay = document.getElementById('direction-overlay');
   const buttons = document.getElementById('direction-buttons');
   buttons.innerHTML = '';
 
-  for (const tileId of possibleTiles) {
-    const tile = game.board[tileId];
+  const dirNames = { north: 'Nord', south: 'Sud', east: 'Est', west: 'Ouest' };
+  const typeNames = {
+    start: 'Depart', bonus: 'Bonus', damage: 'Danger',
+    joker: 'Joker', event: 'Event', normal: '',
+    checkpoint_red: 'CP Rouge', checkpoint_blue: 'CP Bleu',
+    checkpoint_yellow: 'CP Jaune', checkpoint_green: 'CP Vert',
+  };
+
+  for (const move of moves) {
+    const tile = game.board[move.tileId];
     const btn = document.createElement('button');
     btn.className = 'overlay-btn';
 
-    // Label selon le type et la direction
-    let label = `Case ${tileId}`;
-    if (tile.type !== 'normal') {
-      const typeNames = {
-        start: 'Depart', bonus: 'Bonus', damage: 'Danger',
-        joker: 'Joker', event: 'Event',
-        checkpoint_red: 'CP Rouge', checkpoint_blue: 'CP Bleu',
-        checkpoint_yellow: 'CP Jaune', checkpoint_green: 'CP Vert',
-      };
-      label = typeNames[tile.type] || label;
-    }
+    let label = dirNames[move.direction] || move.direction;
+    if (move.isLink) label += ' [Lien]';
+
+    const typeName = typeNames[tile.type];
+    if (typeName) label += ` - ${typeName}`;
+
     if (tile.owner !== null) {
       const owner = game.players.find(p => p.id === tile.owner);
       label += ` (${owner.name})`;
@@ -368,7 +371,7 @@ function showDirectionChoice(possibleTiles, callback) {
     btn.textContent = label;
     btn.addEventListener('click', () => {
       overlay.classList.add('hidden');
-      callback(tileId);
+      callback(move);
     });
     buttons.appendChild(btn);
   }

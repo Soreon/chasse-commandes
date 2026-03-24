@@ -1,4 +1,4 @@
-// Definition du plateau et des types de cases
+// Systeme de plateau en grille avec liens (teleporteurs)
 
 export const TileType = {
   START: 'start',
@@ -13,7 +13,6 @@ export const TileType = {
   EVENT: 'event',
 };
 
-// Couleurs d'affichage par type de case
 export const TILE_COLORS = {
   [TileType.START]: '#ffd700',
   [TileType.NORMAL]: '#3a4060',
@@ -27,7 +26,6 @@ export const TILE_COLORS = {
   [TileType.EVENT]: '#00c8ff',
 };
 
-// Symboles pour les types de cases
 export const TILE_SYMBOLS = {
   [TileType.START]: 'S',
   [TileType.NORMAL]: '',
@@ -41,115 +39,203 @@ export const TILE_SYMBOLS = {
   [TileType.EVENT]: 'E',
 };
 
-// Prix de base pour acheter une case normale
+// Caractere -> type de case
+const TILE_CHARS = {
+  'S': TileType.START,
+  'N': TileType.NORMAL,
+  'R': TileType.CHECKPOINT_RED,
+  'B': TileType.CHECKPOINT_BLUE,
+  'Y': TileType.CHECKPOINT_YELLOW,
+  'G': TileType.CHECKPOINT_GREEN,
+  '+': TileType.BONUS,
+  '!': TileType.DAMAGE,
+  '?': TileType.JOKER,
+  'E': TileType.EVENT,
+};
+
+// Directions et oppositions
+export const OPPOSITE_DIR = {
+  north: 'south',
+  south: 'north',
+  east: 'west',
+  west: 'east',
+};
+
+const DIR_OFFSETS = {
+  north: [-1, 0],
+  south: [1, 0],
+  east: [0, 1],
+  west: [0, -1],
+};
+
+// === Constantes de jeu ===
 export const BASE_TILE_COST = 100;
-
-// Multiplicateur de peage (% de la valeur de la case)
 export const TOLL_RATE = 0.2;
-
-// Multiplicateur de rachat force
 export const BUYOUT_MULTIPLIER = 5;
-
-// Bonus par checkpoint traverse
 export const CHECKPOINT_BONUS_GP = 50;
-
-// Bonus de tour (lap) quand les 4 checkpoints sont actives
 export const LAP_BONUS_GP = 500;
-
-// Bonus en passant par la case depart
 export const START_PASS_BONUS = 100;
-
-// Bonus supplementaire en s'arretant sur la case depart
 export const START_STOP_BONUS = 200;
+export const CHAIN_BONUS_RATE = 0.25;
 
-// Bonus de synergy par case adjacente possedee
-export const CHAIN_BONUS_RATE = 0.25; // +25% par case adjacente de meme proprietaire
+// === Layout du Keyblade Board ===
+// Grille 9 lignes x 11 colonnes
+// Chaque caractere est une cellule. '.' = vide, lettres = types de cases
+const KEYBLADE_LAYOUT = [
+  '. . N N ? N N N N . .',
+  '. . N . . . . . N . .',
+  'N B N N N . N N N R N',
+  'N . N . . . . . N . N',
+  '! . N . . . . . N . +',
+  'N . N . . . . . N . N',
+  'N G N N N E N N N Y N',
+  '. . N . . . . . N . .',
+  '. . N ? N S N N N . .',
+];
 
-// Cree un plateau "Keyblade Board"
+// Liens (ponts/teleporteurs) entre cases non adjacentes
+// from/to = [row, col], cells = cellules intermediaires (pour le rendu)
+const KEYBLADE_LINKS = [
+  // Lien vertical gauche : traverse le centre du haut vers le bas
+  { from: [2, 4], to: [6, 4], cells: [[3, 4], [4, 4], [5, 4]], direction: 'vertical' },
+  // Lien vertical droit
+  { from: [2, 6], to: [6, 6], cells: [[3, 6], [4, 6], [5, 6]], direction: 'vertical' },
+  // Lien horizontal central
+  { from: [4, 2], to: [4, 8], cells: [[4, 3], [4, 4], [4, 5], [4, 6], [4, 7]], direction: 'horizontal' },
+];
+
+// === Création du plateau ===
+
 export function createKeybladeBoard() {
-  // Layout en forme de keyblade / circuit avec intersections
-  // Coordonnees en % pour le rendu responsive
-  const tiles = [
-    // === Boucle principale ===
-    { id: 0, type: TileType.START, x: 50, y: 85, connections: [1, 27] },
-    { id: 1, type: TileType.NORMAL, x: 40, y: 80, connections: [0, 2] },
-    { id: 2, type: TileType.NORMAL, x: 30, y: 75, connections: [1, 3] },
-    { id: 3, type: TileType.CHECKPOINT_RED, x: 22, y: 68, connections: [2, 4] },
-    { id: 4, type: TileType.NORMAL, x: 18, y: 58, connections: [3, 5] },
-    { id: 5, type: TileType.BONUS, x: 15, y: 48, connections: [4, 6] },
-    // Intersection gauche haute
-    { id: 6, type: TileType.NORMAL, x: 18, y: 38, connections: [5, 7, 18] },
-    { id: 7, type: TileType.NORMAL, x: 22, y: 28, connections: [6, 8] },
-    { id: 8, type: TileType.CHECKPOINT_BLUE, x: 28, y: 20, connections: [7, 9] },
-    { id: 9, type: TileType.NORMAL, x: 36, y: 15, connections: [8, 10] },
-    { id: 10, type: TileType.DAMAGE, x: 44, y: 12, connections: [9, 11] },
-    // Sommet - intersection
-    { id: 11, type: TileType.NORMAL, x: 50, y: 10, connections: [10, 12, 20] },
-    { id: 12, type: TileType.NORMAL, x: 56, y: 12, connections: [11, 13] },
-    { id: 13, type: TileType.JOKER, x: 64, y: 15, connections: [12, 14] },
-    { id: 14, type: TileType.CHECKPOINT_YELLOW, x: 72, y: 20, connections: [13, 15] },
-    { id: 15, type: TileType.NORMAL, x: 78, y: 28, connections: [14, 16] },
-    // Intersection droite haute
-    { id: 16, type: TileType.NORMAL, x: 82, y: 38, connections: [15, 17, 22] },
-    { id: 17, type: TileType.NORMAL, x: 85, y: 48, connections: [16, 26] },
-
-    // === Branche interieure gauche (depuis intersection 6) ===
-    { id: 18, type: TileType.NORMAL, x: 30, y: 40, connections: [6, 19] },
-    { id: 19, type: TileType.EVENT, x: 40, y: 42, connections: [18, 20] },
-
-    // === Branche interieure centre (rejoint intersection 11) ===
-    { id: 20, type: TileType.NORMAL, x: 50, y: 35, connections: [11, 19, 21] },
-    { id: 21, type: TileType.NORMAL, x: 60, y: 42, connections: [20, 22] },
-
-    // === Branche interieure droite (depuis intersection 16) ===
-    { id: 22, type: TileType.BONUS, x: 70, y: 40, connections: [16, 21] },
-
-    // === Retour cote droit ===
-    // { id: 17 deja defini, continue vers: }
-    { id: 23, type: TileType.CHECKPOINT_GREEN, x: 82, y: 58, connections: [26, 24] },
-    { id: 24, type: TileType.NORMAL, x: 78, y: 68, connections: [23, 25] },
-    { id: 25, type: TileType.DAMAGE, x: 70, y: 75, connections: [24, 27] },
-
-    // Connexion du 17 au checkpoint vert via case intermediaire
-    { id: 26, type: TileType.NORMAL, x: 85, y: 53, connections: [17, 23] },
-
-    // Retour vers depart
-    { id: 27, type: TileType.NORMAL, x: 60, y: 80, connections: [25, 0] },
-  ];
-
-  // Initialiser les proprietes de jeu pour chaque case
-  return tiles.map(tile => ({
-    ...tile,
-    owner: null,         // ID du joueur proprietaire
-    cardPlaced: null,    // Carte placee sur la case
-    baseValue: BASE_TILE_COST,
-    currentValue: 0,     // Valeur actuelle (baseValue + cardValue + upgrades)
-    level: 0,            // Niveau d'amelioration (0 = non achete)
-    tollValue: 0,        // Peage actuel
-  }));
+  return createBoardFromLayout(KEYBLADE_LAYOUT, KEYBLADE_LINKS);
 }
 
-// Calcule le peage d'une case en tenant compte des chaines
-export function calculateToll(board, tileId) {
-  const tile = board[tileId];
+function createBoardFromLayout(layoutLines, linkDefs) {
+  const grid = layoutLines.map(line => line.split(' '));
+  const rows = grid.length;
+  const cols = grid[0].length;
+
+  const tiles = [];
+  const posToId = {}; // "row,col" -> tileId
+  let startTileId = 0;
+
+  // Creer les cases
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const ch = grid[r][c];
+      const tileType = TILE_CHARS[ch];
+      if (!tileType) continue;
+
+      const id = tiles.length;
+      tiles.push({
+        id,
+        row: r,
+        col: c,
+        type: tileType,
+        // Adjacences dans les 4 directions : { tileId, isLink } ou null
+        adjacencies: { north: null, south: null, east: null, west: null },
+        // Proprietes de jeu
+        owner: null,
+        cardPlaced: null,
+        baseValue: BASE_TILE_COST,
+        currentValue: 0,
+        level: 0,
+        tollValue: 0,
+      });
+
+      if (tileType === TileType.START) startTileId = id;
+      posToId[`${r},${c}`] = id;
+    }
+  }
+
+  // Calculer les adjacences orthogonales (cases directement voisines)
+  for (const tile of tiles) {
+    for (const [dir, [dr, dc]] of Object.entries(DIR_OFFSETS)) {
+      const key = `${tile.row + dr},${tile.col + dc}`;
+      if (key in posToId) {
+        tile.adjacencies[dir] = { tileId: posToId[key], isLink: false };
+      }
+    }
+  }
+
+  // Ajouter les liens (teleporteurs entre cases non adjacentes)
+  const links = [];
+  for (const def of linkDefs) {
+    const fromId = posToId[`${def.from[0]},${def.from[1]}`];
+    const toId = posToId[`${def.to[0]},${def.to[1]}`];
+    if (fromId === undefined || toId === undefined) continue;
+
+    // Determiner la direction d'entree dans le lien
+    let fromDir;
+    if (def.direction === 'vertical') {
+      fromDir = def.from[0] < def.to[0] ? 'south' : 'north';
+    } else {
+      fromDir = def.from[1] < def.to[1] ? 'east' : 'west';
+    }
+    const toDir = OPPOSITE_DIR[fromDir];
+
+    // Connecter les deux extremites
+    tiles[fromId].adjacencies[fromDir] = { tileId: toId, isLink: true };
+    tiles[toId].adjacencies[toDir] = { tileId: fromId, isLink: true };
+
+    links.push({
+      from: fromId,
+      to: toId,
+      cells: def.cells,
+      direction: def.direction,
+    });
+  }
+
+  return { tiles, links, rows, cols, startTileId, posToId };
+}
+
+// === Mouvement ===
+
+// Retourne les deplacements possibles depuis une case, en respectant le non-demi-tour
+export function getAvailableMoves(tiles, tileId, lastDirection) {
+  const tile = tiles[tileId];
+  const blocked = lastDirection ? OPPOSITE_DIR[lastDirection] : null;
+  const moves = [];
+
+  for (const [dir, adj] of Object.entries(tile.adjacencies)) {
+    if (adj && dir !== blocked) {
+      moves.push({ direction: dir, tileId: adj.tileId, isLink: adj.isLink });
+    }
+  }
+
+  // Fallback si aucun mouvement (ne devrait pas arriver sur un bon plateau)
+  if (moves.length === 0) {
+    for (const [dir, adj] of Object.entries(tile.adjacencies)) {
+      if (adj) {
+        moves.push({ direction: dir, tileId: adj.tileId, isLink: adj.isLink });
+      }
+    }
+  }
+
+  return moves;
+}
+
+// === Peage et valeur ===
+
+export function calculateToll(tiles, tileId) {
+  const tile = tiles[tileId];
   if (!tile.owner || tile.level === 0) return 0;
 
   let baseToll = Math.floor(tile.currentValue * TOLL_RATE);
 
-  // Bonus de chaine : compter les cases adjacentes du meme proprietaire
+  // Bonus de chaine : cases adjacentes (non-lien) du meme proprietaire
   let chainCount = 0;
-  for (const connId of tile.connections) {
-    if (board[connId].owner === tile.owner) {
+  for (const adj of Object.values(tile.adjacencies)) {
+    if (adj && !adj.isLink && tiles[adj.tileId].owner === tile.owner) {
       chainCount++;
     }
   }
-  const chainMultiplier = 1 + chainCount * CHAIN_BONUS_RATE;
-  return Math.floor(baseToll * chainMultiplier);
+
+  return Math.floor(baseToll * (1 + chainCount * CHAIN_BONUS_RATE));
 }
 
-// Met a jour la valeur et le peage d'une case
-export function updateTileValue(board, tileId) {
-  const tile = board[tileId];
+export function updateTileValue(tiles, tileId) {
+  const tile = tiles[tileId];
   if (tile.level === 0) {
     tile.currentValue = 0;
     tile.tollValue = 0;
@@ -158,34 +244,29 @@ export function updateTileValue(board, tileId) {
   const cardValue = tile.cardPlaced ? tile.cardPlaced.value * 50 : 0;
   const upgradeValue = (tile.level - 1) * 100;
   tile.currentValue = tile.baseValue + cardValue + upgradeValue;
-  tile.tollValue = calculateToll(board, tileId);
+  tile.tollValue = calculateToll(tiles, tileId);
 }
 
-// Met a jour tous les peages (utile apres un achat qui change les chaines)
-export function updateAllTolls(board) {
-  for (let i = 0; i < board.length; i++) {
-    if (board[i].owner !== null) {
-      updateTileValue(board, i);
+export function updateAllTolls(tiles) {
+  for (let i = 0; i < tiles.length; i++) {
+    if (tiles[i].owner !== null) {
+      updateTileValue(tiles, i);
     }
   }
 }
 
-// Calcule le cout de rachat force
 export function getBuyoutCost(tile) {
   return tile.currentValue * BUYOUT_MULTIPLIER;
 }
 
-// Calcule le cout d'amelioration d'une case
 export function getUpgradeCost(tile) {
   return 100 + tile.level * 50;
 }
 
-// Verifie si une case est un checkpoint
 export function isCheckpoint(type) {
   return type.startsWith('checkpoint_');
 }
 
-// Obtient la couleur du checkpoint
 export function getCheckpointColor(type) {
   if (type === TileType.CHECKPOINT_RED) return 'red';
   if (type === TileType.CHECKPOINT_BLUE) return 'blue';

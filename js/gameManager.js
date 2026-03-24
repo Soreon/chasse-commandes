@@ -1,6 +1,6 @@
 // Gestionnaire principal du jeu - orchestre la boucle de jeu
 
-import { TileType, createKeybladeBoard, updateTileValue, updateAllTolls, getBuyoutCost, getUpgradeCost, isCheckpoint, getCheckpointColor, CHECKPOINT_BONUS_GP, LAP_BONUS_GP, START_PASS_BONUS, START_STOP_BONUS, BASE_TILE_COST } from './board.js';
+import { TileType, createKeybladeBoard, updateTileValue, updateAllTolls, getBuyoutCost, getUpgradeCost, isCheckpoint, getCheckpointColor, getAvailableMoves, CHECKPOINT_BONUS_GP, LAP_BONUS_GP, START_PASS_BONUS, START_STOP_BONUS, BASE_TILE_COST } from './board.js';
 import { rollDie, CardType, createCard, drawRandomCards } from './cards.js';
 import { createPlayer, calculateNetWorth, addGP, transferGP, refillHand, removeCardFromHand, allCheckpointsVisited, resetCheckpoints, PLAYER_COLORS, AI_NAMES } from './player.js';
 import { Renderer } from './renderer.js';
@@ -8,7 +8,9 @@ import { AI } from './ai.js';
 
 export class GameManager {
   constructor() {
-    this.board = [];
+    this.board = [];        // Tableau de cases (tiles) indexe par id
+    this.boardData = null;   // Donnees completes du plateau (tiles, links, rows, cols)
+    this.startTileId = 0;    // ID de la case depart
     this.players = [];
     this.currentPlayerIndex = 0;
     this.turnNumber = 1;
@@ -33,13 +35,20 @@ export class GameManager {
   // Initialise une nouvelle partie
   init(playerName, opponentCount, gpGoal, boardId) {
     this.gpGoal = gpGoal;
-    this.board = createKeybladeBoard();
+    const boardData = createKeybladeBoard();
+    this.board = boardData.tiles;
+    this.boardData = boardData;
+    this.startTileId = boardData.startTileId;
 
     // Creer les joueurs
     this.players = [];
     this.players.push(createPlayer(0, playerName, true, PLAYER_COLORS[0]));
     for (let i = 0; i < opponentCount; i++) {
       this.players.push(createPlayer(i + 1, AI_NAMES[i] || `IA ${i + 1}`, false, PLAYER_COLORS[i + 1]));
+    }
+    // Positionner tous les joueurs sur la case depart
+    for (const p of this.players) {
+      p.position = this.startTileId;
     }
 
     this.currentPlayerIndex = 0;
@@ -197,50 +206,43 @@ export class GameManager {
       return;
     }
 
-    const currentTile = this.board[player.position];
-    // Obtenir les cases accessibles (pas de demi-tour)
-    let possibleNext = currentTile.connections.filter(id => id !== player.previousPosition);
+    // Obtenir les deplacements possibles (respecte le non-demi-tour)
+    const moves = getAvailableMoves(this.board, player.position, player.lastDirection);
 
-    // Si une seule option ou si bloque (fallback), avancer
-    if (possibleNext.length === 0) {
-      possibleNext = currentTile.connections;
-    }
-
-    if (possibleNext.length === 1) {
-      await this.moveToTile(possibleNext[0], stepsRemaining);
+    if (moves.length === 1) {
+      await this.moveToTile(moves[0], stepsRemaining);
     } else {
       // Intersection : demander la direction
       if (player.isHuman) {
-        this.askDirection(possibleNext, stepsRemaining);
+        this.askDirection(moves, stepsRemaining);
       } else {
-        // IA choisit
-        const choice = AI.chooseDirection(player, possibleNext, this.board, this.players);
+        const choice = AI.chooseDirection(player, moves, this.board, this.players);
         await this.moveToTile(choice, stepsRemaining);
       }
     }
   }
 
-  askDirection(possibleNext, stepsRemaining) {
+  askDirection(moves, stepsRemaining) {
     if (this.onDirectionChoice) {
-      this.onDirectionChoice(possibleNext, (chosenTileId) => {
-        this.moveToTile(chosenTileId, stepsRemaining);
+      this.onDirectionChoice(moves, (chosenMove) => {
+        this.moveToTile(chosenMove, stepsRemaining);
       });
     }
   }
 
-  async moveToTile(nextTileId, stepsRemaining) {
+  async moveToTile(move, stepsRemaining) {
     const player = this.currentPlayer;
-    const fromTile = player.position;
+    const fromTileId = player.position;
 
     // Animation
-    await this.animateMovement(fromTile, nextTileId, player);
+    await this.animateMovement(fromTileId, move.tileId, player);
 
-    player.previousPosition = fromTile;
-    player.position = nextTileId;
+    player.lastDirection = move.direction;
+    player.position = move.tileId;
 
     // Effets de passage seulement si on ne s'arrete PAS ici (pas la derniere case)
     if (stepsRemaining > 1) {
-      this.onPass(nextTileId);
+      this.onPass(move.tileId);
     }
 
     // Verifier Captain Dark/Justice transmission
@@ -252,7 +254,7 @@ export class GameManager {
     await this.startMovement(stepsRemaining - 1);
   }
 
-  animateMovement(fromTile, toTile, player) {
+  animateMovement(fromTileId, toTileId, player) {
     return new Promise(resolve => {
       const duration = 200; // ms
       const start = performance.now();
@@ -263,8 +265,9 @@ export class GameManager {
 
         this.animState = {
           active: true,
-          fromTile,
-          toTile,
+          playerId: player.id,
+          fromTileId,
+          toTileId,
           progress,
           color: player.color,
           name: player.name,
@@ -298,7 +301,7 @@ export class GameManager {
     }
 
     // Case depart (en passant)
-    if (tile.type === TileType.START && tile.id !== this.board[player.previousPosition]?.id) {
+    if (tile.type === TileType.START) {
       this.onPassStart(player);
     }
   }
@@ -559,7 +562,7 @@ export class GameManager {
       },
       () => {
         // Teleporter au depart
-        player.position = 0;
+        player.position = this.startTileId;
         this.log(`Joker ! Teleportation au depart !`, 'important');
         return 'Teleportation au depart !';
       },
@@ -686,7 +689,7 @@ export class GameManager {
     // Verifier victoire (le joueur doit etre sur le depart)
     const player = this.currentPlayer;
     const netWorth = calculateNetWorth(player, this.board);
-    if (netWorth >= this.gpGoal && player.position === 0) {
+    if (netWorth >= this.gpGoal && player.position === this.startTileId) {
       this.victory(player);
       return;
     }
@@ -782,7 +785,7 @@ export class GameManager {
 
   render() {
     if (this.renderer) {
-      this.renderer.render(this.board, this.players, this.currentPlayer?.id, this.animState);
+      this.renderer.render(this.boardData, this.players, this.currentPlayer?.id, this.animState);
     }
   }
 

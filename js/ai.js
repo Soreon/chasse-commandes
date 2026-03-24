@@ -18,13 +18,13 @@ export class AI {
   }
 
   // Choisit la direction a une intersection
-  static chooseDirection(player, possibleNextTiles, board, allPlayers) {
-    // Priorite : checkpoint non visite > bonus > case vide > eviter peages
-    let bestTile = possibleNextTiles[0];
+  // moves = [{ direction, tileId, isLink }, ...]
+  static chooseDirection(player, moves, board, allPlayers) {
+    let bestMove = moves[0];
     let bestScore = -Infinity;
 
-    for (const tileId of possibleNextTiles) {
-      const tile = board[tileId];
+    for (const move of moves) {
+      const tile = board[move.tileId];
       let score = 0;
 
       // Chercher les checkpoints non visites
@@ -38,6 +38,9 @@ export class AI {
       // Bonus
       if (tile.type === TileType.BONUS) score += 20;
       if (tile.type === TileType.START) score += 15;
+
+      // Les liens sont strategiques (raccourcis)
+      if (move.isLink) score += 8;
 
       // Eviter les cases adverses avec gros peage
       if (tile.owner !== null && tile.owner !== player.id) {
@@ -62,11 +65,11 @@ export class AI {
 
       if (score > bestScore) {
         bestScore = score;
-        bestTile = tileId;
+        bestMove = move;
       }
     }
 
-    return bestTile;
+    return bestMove;
   }
 
   // Decide s'il faut acheter une case
@@ -81,8 +84,8 @@ export class AI {
     if (player.gp > tile.baseValue * 1.5) return true;
 
     // Acheter si une case adjacente nous appartient (creer une chaine)
-    for (const connId of tile.connections) {
-      if (board[connId].owner === player.id) return true;
+    for (const adj of Object.values(tile.adjacencies)) {
+      if (adj && !adj.isLink && board[adj.tileId].owner === player.id) return true;
     }
 
     return player.gp > tile.baseValue * 2;
