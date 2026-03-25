@@ -1,6 +1,6 @@
 // Rendu du plateau en grille sur Canvas
 
-import { TILE_COLORS, TILE_SYMBOLS, TileType } from './board.js';
+import { TileType } from './board.js';
 
 const PLAYER_RADIUS = 10;
 const PLAYER_OFFSETS = [
@@ -8,6 +8,29 @@ const PLAYER_OFFSETS = [
   { dx: 12, dy: -12 },
   { dx: 0, dy: 12 },
 ];
+
+// Mapping type de case -> image
+const TILE_IMAGE_PATHS = {
+  [TileType.START]: 'images/startPanel.png',
+  [TileType.NORMAL]: 'images/commandPanel.png',
+  [TileType.CHECKPOINT_RED]: 'images/redCheckpoint.png',
+  [TileType.CHECKPOINT_BLUE]: 'images/blueCheckpoint.png',
+  [TileType.CHECKPOINT_YELLOW]: 'images/yellowCheckpoint.png',
+  [TileType.CHECKPOINT_GREEN]: 'images/greenCheckpoint.png',
+  [TileType.BONUS]: 'images/bonusPanel.png',
+  [TileType.DAMAGE]: 'images/damagePanel.png',
+  [TileType.EVENT]: 'images/specialPanel.png',
+  [TileType.BOOSTER]: 'images/gpBoosterPanel.png',
+};
+
+function loadImage(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
 
 export class Renderer {
   constructor(canvas) {
@@ -19,8 +42,14 @@ export class Renderer {
     this.offsetY = 0;
     this.boardRows = 0;
     this.boardCols = 0;
-    // Derniers parametres de rendu pour redessiner au resize
     this._lastRenderArgs = null;
+
+    // Images precharges
+    this.tileImages = {};
+    this.diceImage = null;
+    this.teleporterImages = { horizontal: null, vertical: null };
+    this.imagesLoaded = false;
+
     this.resize();
     window.addEventListener('resize', () => {
       this.resize();
@@ -30,13 +59,35 @@ export class Renderer {
     });
   }
 
+  async loadImages() {
+    const entries = Object.entries(TILE_IMAGE_PATHS);
+    const results = await Promise.all(entries.map(([, src]) => loadImage(src)));
+    for (let i = 0; i < entries.length; i++) {
+      this.tileImages[entries[i][0]] = results[i];
+    }
+
+    const [dice, hTele, vTele] = await Promise.all([
+      loadImage('images/dice.png'),
+      loadImage('images/horizontalTeleporter.png'),
+      loadImage('images/verticalTeleporter.png'),
+    ]);
+    this.diceImage = dice;
+    this.teleporterImages.horizontal = hTele;
+    this.teleporterImages.vertical = vTele;
+    this.imagesLoaded = true;
+
+    // Re-render si des donnees sont deja en attente
+    if (this._lastRenderArgs) {
+      this.render(...this._lastRenderArgs);
+    }
+  }
+
   resize() {
     const container = this.canvas.parentElement;
     this.canvas.width = container.clientWidth;
     this.canvas.height = container.clientHeight;
   }
 
-  // Recalcule la taille et le centrage de la grille
   updateLayout(rows, cols) {
     this.boardRows = rows;
     this.boardCols = cols;
@@ -51,7 +102,6 @@ export class Renderer {
     this.offsetY = (this.canvas.height - rows * this.cellSize) / 2;
   }
 
-  // Centre pixel d'une cellule de la grille (row, col)
   getCellCenter(row, col) {
     return {
       x: this.offsetX + col * this.cellSize + this.cellSize / 2,
@@ -59,7 +109,6 @@ export class Renderer {
     };
   }
 
-  // Centre pixel d'une case (tile)
   getTileCenter(tile) {
     return this.getCellCenter(tile.row, tile.col);
   }
@@ -67,14 +116,19 @@ export class Renderer {
   // === Rendu principal ===
   render(boardData, players, currentPlayerId, animState) {
     this._lastRenderArgs = [boardData, players, currentPlayerId, animState];
+    if (!this.imagesLoaded) return;
+
     const { tiles, links, rows, cols } = boardData;
     const ctx = this.ctx;
 
     this.updateLayout(rows, cols);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
+    // Pixel art : pas de lissage
+    ctx.imageSmoothingEnabled = false;
+
     // 1. Liens (teleporteurs)
-    this.drawLinks(links, tiles);
+    this.drawLinks(links);
 
     // 2. Cases
     for (const tile of tiles) {
@@ -93,80 +147,48 @@ export class Renderer {
     }
   }
 
-  // Dessiner les liens (ponts/teleporteurs)
-  drawLinks(links, tiles) {
+  // Dessiner les teleporteurs (images uniquement, avec depassement)
+  drawLinks(links) {
     const ctx = this.ctx;
+    const gap = this.cellSize - this.tileSize;
 
     for (const link of links) {
-      const fromTile = tiles[link.from];
-      const toTile = tiles[link.to];
-      const from = this.getTileCenter(fromTile);
-      const to = this.getTileCenter(toTile);
+      const teleImg = this.teleporterImages[link.direction];
+      if (!teleImg) continue;
 
-      // Chemin en pointilles a travers les cellules intermediaires
-      ctx.strokeStyle = '#00e0ff';
-      ctx.lineWidth = 3;
-      ctx.setLineDash([8, 5]);
-      ctx.globalAlpha = 0.5;
+      const cellSet = new Set(link.cells.map(([r, c]) => `${r},${c}`));
+      const isHorizontal = link.direction === 'horizontal';
 
-      ctx.beginPath();
-      ctx.moveTo(from.x, from.y);
-      for (const [r, c] of link.cells) {
+      for (let i = 0; i < link.cells.length; i++) {
+        const [r, c] = link.cells[i];
         const p = this.getCellCenter(r, c);
-        ctx.lineTo(p.x, p.y);
+
+        // Calcul du ratio de base (axe long = tileSize, axe court proportionnel)
+        const scale = this.tileSize / (isHorizontal ? teleImg.naturalWidth : teleImg.naturalHeight);
+        let w = teleImg.naturalWidth * scale;
+        let h = teleImg.naturalHeight * scale;
+
+        // Depassements sur l'axe du lien
+        let extBefore = 0;
+        let extAfter = 0;
+
+        if (isHorizontal) {
+          const hasLeft = cellSet.has(`${r},${c - 1}`);
+          const hasRight = cellSet.has(`${r},${c + 1}`);
+          extBefore = hasLeft ? gap / 2 : gap;
+          extAfter = hasRight ? gap / 2 : gap;
+          w += extBefore + extAfter;
+          ctx.drawImage(teleImg, p.x - w / 2 + (extAfter - extBefore) / 2, p.y - h / 2, w, h);
+        } else {
+          const hasUp = cellSet.has(`${r - 1},${c}`);
+          const hasDown = cellSet.has(`${r + 1},${c}`);
+          extBefore = hasUp ? gap / 2 : gap;
+          extAfter = hasDown ? gap / 2 : gap;
+          h += extBefore + extAfter;
+          ctx.drawImage(teleImg, p.x - w / 2, p.y - h / 2 + (extAfter - extBefore) / 2, w, h);
+        }
       }
-      ctx.lineTo(to.x, to.y);
-      ctx.stroke();
-
-      ctx.setLineDash([]);
-      ctx.globalAlpha = 1;
-
-      // Petits losanges sur les cellules de lien
-      for (const [r, c] of link.cells) {
-        const p = this.getCellCenter(r, c);
-        const s = 5;
-        ctx.fillStyle = '#00e0ff';
-        ctx.globalAlpha = 0.25;
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y - s);
-        ctx.lineTo(p.x + s, p.y);
-        ctx.lineTo(p.x, p.y + s);
-        ctx.lineTo(p.x - s, p.y);
-        ctx.closePath();
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-
-      // Fleches aux extremites du lien
-      this.drawLinkArrow(from, link.cells[0], link.direction);
-      this.drawLinkArrow(to, link.cells[link.cells.length - 1], link.direction);
     }
-  }
-
-  drawLinkArrow(tilePos, firstCell, direction) {
-    const ctx = this.ctx;
-    const cell = this.getCellCenter(firstCell[0], firstCell[1]);
-    const midX = (tilePos.x + cell.x) / 2;
-    const midY = (tilePos.y + cell.y) / 2;
-
-    ctx.fillStyle = '#00e0ff';
-    ctx.globalAlpha = 0.6;
-    ctx.beginPath();
-    const s = 4;
-    if (direction === 'vertical') {
-      const dy = cell.y > tilePos.y ? 1 : -1;
-      ctx.moveTo(midX - s, midY - s * dy);
-      ctx.lineTo(midX + s, midY - s * dy);
-      ctx.lineTo(midX, midY + s * dy);
-    } else {
-      const dx = cell.x > tilePos.x ? 1 : -1;
-      ctx.moveTo(midX - s * dx, midY - s);
-      ctx.lineTo(midX - s * dx, midY + s);
-      ctx.lineTo(midX + s * dx, midY);
-    }
-    ctx.closePath();
-    ctx.fill();
-    ctx.globalAlpha = 1;
   }
 
   // Dessiner une case
@@ -174,19 +196,28 @@ export class Renderer {
     const ctx = this.ctx;
     const { x, y } = this.getTileCenter(tile);
     const half = this.tileSize / 2;
-    const r = 5;
 
     const ownerPlayer = tile.owner !== null
       ? players.find(p => p.id === tile.owner)
       : null;
-    const fillColor = TILE_COLORS[tile.type] || '#3a4060';
 
-    // Rectangle arrondi
-    ctx.beginPath();
-    ctx.roundRect(x - half, y - half, this.tileSize, this.tileSize, r);
+    // Fond blanc pour les cases commande
+    if (tile.type === TileType.NORMAL) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x - half, y - half, this.tileSize, this.tileSize);
+    }
 
+    // Image de la case
+    const img = this.tileImages[tile.type];
+    if (img) {
+      ctx.drawImage(img, x - half, y - half, this.tileSize, this.tileSize);
+    }
+
+    // Surcouche pour case possedee
     if (tile.type === TileType.NORMAL && ownerPlayer) {
-      // Case possedee
+      const r = 5;
+      ctx.beginPath();
+      ctx.roundRect(x - half, y - half, this.tileSize, this.tileSize, r);
       ctx.fillStyle = ownerPlayer.color;
       ctx.globalAlpha = 0.35;
       ctx.fill();
@@ -194,40 +225,11 @@ export class Renderer {
       ctx.strokeStyle = ownerPlayer.color;
       ctx.lineWidth = 2.5;
       ctx.stroke();
-    } else {
-      // Case libre ou speciale
-      ctx.fillStyle = fillColor;
-      ctx.globalAlpha = tile.type === TileType.NORMAL ? 0.2 : 0.45;
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.strokeStyle = fillColor;
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
     }
 
-    // Indicateur de case de (dice) sur les damage tracks
-    if (tile.type === TileType.DAMAGE && tile.hasDice) {
-      ctx.fillStyle = '#ffd700';
-      ctx.font = `bold ${Math.max(14, this.tileSize * 0.4)}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('\u2B22', x, y); // hexagone comme symbole de
-      // Contour dore
-      ctx.strokeStyle = '#ffd700';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.roundRect(x - half, y - half, this.tileSize, this.tileSize, r);
-      ctx.stroke();
-    } else {
-      // Symbole normal
-      const symbol = TILE_SYMBOLS[tile.type];
-      if (symbol) {
-        ctx.fillStyle = '#fff';
-        ctx.font = `bold ${Math.max(12, this.tileSize * 0.32)}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(symbol, x, y);
-      }
+    // Dice recouvre la case damage
+    if (tile.type === TileType.DAMAGE && tile.hasDice && this.diceImage) {
+      ctx.drawImage(this.diceImage, x - half, y - half, this.tileSize, this.tileSize);
     }
 
     // Niveau et peage pour les cases possedees
@@ -250,7 +252,6 @@ export class Renderer {
     const tile = tiles[player.position];
     const { x, y } = this.getTileCenter(tile);
 
-    // Decaler si plusieurs joueurs sur la meme case
     const playersHere = players.filter(p => p.position === player.position);
     const idx = playersHere.indexOf(player);
     const offset = playersHere.length > 1

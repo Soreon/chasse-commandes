@@ -2,10 +2,32 @@
 
 import { GameManager } from './gameManager.js';
 import { CardType } from './cards.js';
-import { getBuyoutCost, getUpgradeCost } from './board.js';
+import { getBuyoutCost, getUpgradeCost, parseBoardJSON } from './board.js';
 import { calculateNetWorth } from './player.js';
 
 const game = new GameManager();
+
+// === Chargement des plateaux depuis boards.json ===
+let boardsData = {};
+
+async function loadBoards() {
+  try {
+    const resp = await fetch('boards.json');
+    boardsData = await resp.json();
+    const select = document.getElementById('board-select');
+    select.innerHTML = '';
+    for (const name of Object.keys(boardsData)) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      select.appendChild(opt);
+    }
+  } catch (e) {
+    console.error('Erreur chargement boards.json:', e);
+  }
+}
+
+loadBoards();
 
 // === Navigation entre ecrans ===
 function showScreen(screenId) {
@@ -24,7 +46,15 @@ document.getElementById('btn-play').addEventListener('click', () => {
   const playerName = document.getElementById('player-name').value.trim() || 'Ventus';
   const opponentCount = parseInt(document.getElementById('opponent-count').value);
   const gpGoal = parseInt(document.getElementById('gp-goal').value);
-  const boardId = document.getElementById('board-select').value;
+  const boardName = document.getElementById('board-select').value;
+
+  const gridData = boardsData[boardName];
+  if (!gridData) {
+    alert('Plateau introuvable !');
+    return;
+  }
+
+  const boardData = parseBoardJSON(gridData);
 
   showScreen('game-screen');
   document.getElementById('goal-value').textContent = gpGoal.toLocaleString();
@@ -36,7 +66,7 @@ document.getElementById('btn-play').addEventListener('click', () => {
   game.onDirectionChoice = showDirectionChoice;
   game.onVictory = showVictory;
 
-  game.init(playerName, opponentCount, gpGoal, boardId);
+  game.init(playerName, opponentCount, gpGoal, boardData);
 });
 
 // === Selection de cartes dans la main ===
@@ -347,7 +377,7 @@ function showDirectionChoice(moves, callback) {
   const dirNames = { north: 'Nord', south: 'Sud', east: 'Est', west: 'Ouest' };
   const typeNames = {
     start: 'Depart', bonus: 'Bonus', damage: 'Danger',
-    joker: 'Joker', event: 'Event', normal: '',
+    joker: 'Joker', event: 'Event', normal: '', booster: 'Booster',
     checkpoint_red: 'CP Rouge', checkpoint_blue: 'CP Bleu',
     checkpoint_yellow: 'CP Jaune', checkpoint_green: 'CP Vert',
   };

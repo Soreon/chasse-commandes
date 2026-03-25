@@ -27,6 +27,7 @@ export function createPlayer(id, name, isHuman = false, color = '#4a9eff') {
     tollReflect: false,  // Renvoie le prochain peage
     hasJustice: false,   // Captain Justice attache
     hasDark: false,      // Captain Dark attache
+    carryingDice: false, // Porte une case de (damage track)
     // Historique pour anti-demi-tour (direction du dernier deplacement)
     lastDirection: null,
   };

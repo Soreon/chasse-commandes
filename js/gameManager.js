@@ -1,6 +1,6 @@
 // Gestionnaire principal du jeu - orchestre la boucle de jeu
 
-import { TileType, createKeybladeBoard, updateTileValue, updateAllTolls, getBuyoutCost, getUpgradeCost, isCheckpoint, getCheckpointColor, getAvailableMoves, CHECKPOINT_BONUS_GP, LAP_BONUS_GP, START_PASS_BONUS, START_STOP_BONUS, BASE_TILE_COST } from './board.js';
+import { TileType, updateTileValue, updateAllTolls, getBuyoutCost, getUpgradeCost, isCheckpoint, getCheckpointColor, getAvailableMoves, CHECKPOINT_BONUS_GP, LAP_BONUS_GP, START_PASS_BONUS, START_STOP_BONUS, BASE_TILE_COST } from './board.js';
 import { rollDie, CardType, createCard, drawRandomCards } from './cards.js';
 import { createPlayer, calculateNetWorth, addGP, transferGP, refillHand, removeCardFromHand, allCheckpointsVisited, resetCheckpoints, PLAYER_COLORS, AI_NAMES } from './player.js';
 import { Renderer } from './renderer.js';
@@ -33,9 +33,8 @@ export class GameManager {
   }
 
   // Initialise une nouvelle partie
-  init(playerName, opponentCount, gpGoal, boardId) {
+  init(playerName, opponentCount, gpGoal, boardData) {
     this.gpGoal = gpGoal;
-    const boardData = createKeybladeBoard();
     this.board = boardData.tiles;
     this.boardData = boardData;
     this.startTileId = boardData.startTileId;
@@ -58,6 +57,7 @@ export class GameManager {
     // Renderer
     const canvas = document.getElementById('board-canvas');
     this.renderer = new Renderer(canvas);
+    this.renderer.loadImages();
 
     this.render();
     this.log(`Partie lancee ! Objectif : ${this.gpGoal} GP de valeur nette.`);
@@ -233,12 +233,46 @@ export class GameManager {
   async moveToTile(move, stepsRemaining) {
     const player = this.currentPlayer;
     const fromTileId = player.position;
+    const fromTile = this.board[fromTileId];
+
+    // Ramasser le de sur la case de depart (le joueur etait pose dessus)
+    if (!player.carryingDice && fromTile.type === TileType.DAMAGE && fromTile.hasDice) {
+      fromTile.hasDice = false;
+      player.carryingDice = true;
+    }
 
     // Animation
     await this.animateMovement(fromTileId, move.tileId, player);
 
     player.lastDirection = move.direction;
     player.position = move.tileId;
+
+    const toTile = this.board[move.tileId];
+
+    // === Mecanique du de mobile sur les damage tracks ===
+
+    // Ramasser un de en marchant sur une case qui en a un (vol)
+    if (toTile.type === TileType.DAMAGE && toTile.hasDice && !player.carryingDice) {
+      toTile.hasDice = false;
+      player.carryingDice = true;
+      this.log(`${player.name} recupere la case de !`);
+
+      // Voler le de a un joueur qui etait protege ici
+      for (const other of this.players) {
+        if (other.id !== player.id && other.position === move.tileId) {
+          this.log(`${other.name} perd la protection du de !`, 'negative');
+          this.applyDamagePenalty(other);
+        }
+      }
+    }
+
+    // Deposer le de quand on quitte la damage track
+    if (player.carryingDice && toTile.type !== TileType.DAMAGE) {
+      if (fromTile.type === TileType.DAMAGE) {
+        fromTile.hasDice = true;
+      }
+      player.carryingDice = false;
+    }
 
     // Effets de passage seulement si on ne s'arrete PAS ici (pas la derniere case)
     if (stepsRemaining > 1) {
@@ -363,7 +397,20 @@ export class GameManager {
       return;
     }
     if (tile.type === TileType.DAMAGE) {
-      this.handleDamageTile(player);
+      if (player.carryingDice) {
+        // Poser le de ici - en securite
+        tile.hasDice = true;
+        player.carryingDice = false;
+        this.log(`${player.name} est en securite sur la case de !`);
+        this.render();
+        this.endTurn();
+      } else if (tile.hasDice) {
+        // Deja un de ici (le joueur s'arrete pile dessus)
+        this.log(`${player.name} est en securite sur la case de !`);
+        this.endTurn();
+      } else {
+        this.handleDamageTile(player);
+      }
       return;
     }
     if (tile.type === TileType.JOKER) {
@@ -372,6 +419,10 @@ export class GameManager {
     }
     if (tile.type === TileType.EVENT) {
       this.handleEventTile(player);
+      return;
+    }
+    if (tile.type === TileType.BOOSTER) {
+      this.handleBoosterTile(player);
       return;
     }
 
@@ -648,6 +699,35 @@ export class GameManager {
 
     if (player.isHuman) {
       this.showEventResult(message, () => this.endTurn());
+    } else {
+      this.endTurn();
+    }
+  }
+
+  // Applique les degats d'une case damage (quand un joueur perd la protection du de)
+  applyDamagePenalty(player) {
+    const damage = 100 + Math.floor(Math.random() * 200);
+    addGP(player, -damage);
+    this.log(`${player.name} subit ${damage} degats sur la piste de danger !`, 'negative');
+  }
+
+  handleBoosterTile(player) {
+    // Booster : augmente toutes les cases du joueur d'un niveau
+    const ownedTiles = this.board.filter(t => t.owner === player.id && t.level > 0);
+    if (ownedTiles.length > 0) {
+      for (const t of ownedTiles) {
+        if (t.level < 5) t.level++;
+      }
+      updateAllTolls(this.board);
+      this.log(`Case Booster ! Toutes les cases de ${player.name} montent d'un niveau !`, 'important');
+    } else {
+      const amount = 200;
+      addGP(player, amount);
+      this.log(`Case Booster ! Aucune case possedee, ${player.name} gagne ${amount} GP.`);
+    }
+
+    if (player.isHuman) {
+      this.showEventResult('Booster active !', () => this.endTurn());
     } else {
       this.endTurn();
     }

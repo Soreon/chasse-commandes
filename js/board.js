@@ -1,4 +1,5 @@
 // Systeme de plateau en grille avec liens (teleporteurs)
+// Supporte le chargement depuis boards.json
 
 export const TileType = {
   START: 'start',
@@ -11,6 +12,7 @@ export const TileType = {
   DAMAGE: 'damage',
   JOKER: 'joker',
   EVENT: 'event',
+  BOOSTER: 'booster',
 };
 
 export const TILE_COLORS = {
@@ -24,6 +26,7 @@ export const TILE_COLORS = {
   [TileType.DAMAGE]: '#ff2020',
   [TileType.JOKER]: '#ff8c00',
   [TileType.EVENT]: '#00c8ff',
+  [TileType.BOOSTER]: '#00ff90',
 };
 
 export const TILE_SYMBOLS = {
@@ -37,20 +40,7 @@ export const TILE_SYMBOLS = {
   [TileType.DAMAGE]: '!',
   [TileType.JOKER]: '?',
   [TileType.EVENT]: 'E',
-};
-
-// Caractere -> type de case
-const TILE_CHARS = {
-  'S': TileType.START,
-  'N': TileType.NORMAL,
-  'R': TileType.CHECKPOINT_RED,
-  'B': TileType.CHECKPOINT_BLUE,
-  'Y': TileType.CHECKPOINT_YELLOW,
-  'G': TileType.CHECKPOINT_GREEN,
-  '+': TileType.BONUS,
-  '!': TileType.DAMAGE,
-  '?': TileType.JOKER,
-  'E': TileType.EVENT,
+  [TileType.BOOSTER]: 'X',
 };
 
 // Directions et oppositions
@@ -78,69 +68,62 @@ export const START_PASS_BONUS = 100;
 export const START_STOP_BONUS = 200;
 export const CHAIN_BONUS_RATE = 0.25;
 
-// === Layout du Keyblade Board ===
-// Grille 9 lignes x 11 colonnes
-// Chaque caractere est une cellule. '.' = vide, lettres = types de cases
-const KEYBLADE_LAYOUT = [
-  '. . N N ? N N N N . .',
-  '. . N . . . . . N . .',
-  'N B N N N . N N N R N',
-  'N . N . . . . . N . N',
-  '! . N . . . . . N . +',
-  'N . N . . . . . N . N',
-  'N G N N N E N N N Y N',
-  '. . N . . . . . N . .',
-  '. . N ? N S N N N . .',
-];
+// === Mapping des types JSON -> TileType ===
 
-// Liens (ponts/teleporteurs) entre cases non adjacentes
-// from/to = [row, col], cells = cellules intermediaires (pour le rendu)
-const KEYBLADE_LINKS = [
-  // Lien vertical gauche : traverse le centre du haut vers le bas
-  { from: [2, 4], to: [6, 4], cells: [[3, 4], [4, 4], [5, 4]], direction: 'vertical' },
-  // Lien vertical droit
-  { from: [2, 6], to: [6, 6], cells: [[3, 6], [4, 6], [5, 6]], direction: 'vertical' },
-  // Lien horizontal central
-  { from: [4, 2], to: [4, 8], cells: [[4, 3], [4, 4], [4, 5], [4, 6], [4, 7]], direction: 'horizontal' },
-];
-
-// === Création du plateau ===
-
-export function createKeybladeBoard() {
-  return createBoardFromLayout(KEYBLADE_LAYOUT, KEYBLADE_LINKS);
+function mapCellType(cell) {
+  switch (cell.type) {
+    case 'start': return TileType.START;
+    case 'command': return TileType.NORMAL;
+    case 'checkpoint':
+      switch (cell.color) {
+        case 'red': return TileType.CHECKPOINT_RED;
+        case 'blue': return TileType.CHECKPOINT_BLUE;
+        case 'yellow': return TileType.CHECKPOINT_YELLOW;
+        case 'green': return TileType.CHECKPOINT_GREEN;
+      }
+      return TileType.NORMAL;
+    case 'bonus': return TileType.BONUS;
+    case 'damage': return TileType.DAMAGE;
+    case 'special': return TileType.EVENT;
+    case 'booster': return TileType.BOOSTER;
+    default: return TileType.NORMAL;
+  }
 }
 
-function createBoardFromLayout(layoutLines, linkDefs) {
-  const grid = layoutLines.map(line => line.split(' '));
-  const rows = grid.length;
-  const cols = grid[0].length;
+// === Création du plateau depuis le JSON (boards.json) ===
+
+export function parseBoardJSON(gridData) {
+  const rows = gridData.length;
+  const cols = Math.max(...gridData.map(row => row.length));
 
   const tiles = [];
-  const posToId = {}; // "row,col" -> tileId
+  const posToId = {};
   let startTileId = 0;
 
-  // Creer les cases
+  // Phase 1 : creer les cases (ignorer les cellules vides et les teleporters)
   for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const ch = grid[r][c];
-      const tileType = TILE_CHARS[ch];
-      if (!tileType) continue;
+    for (let c = 0; c < (gridData[r]?.length || 0); c++) {
+      const cell = gridData[r][c];
+      if (!cell || !cell.type || cell.type === 'teleporter') continue;
 
+      const tileType = mapCellType(cell);
       const id = tiles.length;
+
       tiles.push({
         id,
         row: r,
         col: c,
         type: tileType,
-        // Adjacences dans les 4 directions : { tileId, isLink } ou null
         adjacencies: { north: null, south: null, east: null, west: null },
-        // Proprietes de jeu
         owner: null,
         cardPlaced: null,
         baseValue: BASE_TILE_COST,
         currentValue: 0,
         level: 0,
         tollValue: 0,
+        // Metadonnees du JSON
+        hasDice: cell.hasDice || false,
+        noBox: cell.noBox || false,
       });
 
       if (tileType === TileType.START) startTileId = id;
@@ -148,7 +131,7 @@ function createBoardFromLayout(layoutLines, linkDefs) {
     }
   }
 
-  // Calculer les adjacences orthogonales (cases directement voisines)
+  // Phase 2 : calculer les adjacences orthogonales
   for (const tile of tiles) {
     for (const [dir, [dr, dc]] of Object.entries(DIR_OFFSETS)) {
       const key = `${tile.row + dr},${tile.col + dc}`;
@@ -158,40 +141,81 @@ function createBoardFromLayout(layoutLines, linkDefs) {
     }
   }
 
-  // Ajouter les liens (teleporteurs entre cases non adjacentes)
-  const links = [];
-  for (const def of linkDefs) {
-    const fromId = posToId[`${def.from[0]},${def.from[1]}`];
-    const toId = posToId[`${def.to[0]},${def.to[1]}`];
-    if (fromId === undefined || toId === undefined) continue;
-
-    // Determiner la direction d'entree dans le lien
-    let fromDir;
-    if (def.direction === 'vertical') {
-      fromDir = def.from[0] < def.to[0] ? 'south' : 'north';
-    } else {
-      fromDir = def.from[1] < def.to[1] ? 'east' : 'west';
-    }
-    const toDir = OPPOSITE_DIR[fromDir];
-
-    // Connecter les deux extremites
-    tiles[fromId].adjacencies[fromDir] = { tileId: toId, isLink: true };
-    tiles[toId].adjacencies[toDir] = { tileId: fromId, isLink: true };
-
-    links.push({
-      from: fromId,
-      to: toId,
-      cells: def.cells,
-      direction: def.direction,
-    });
-  }
+  // Phase 3 : detecter et ajouter les liens depuis les chaines de teleporters
+  const links = detectLinks(gridData, rows, cols, posToId, tiles);
 
   return { tiles, links, rows, cols, startTileId, posToId };
 }
 
+// === Detection automatique des liens ===
+
+function detectLinks(gridData, rows, cols, posToId, tiles) {
+  const links = [];
+  const visited = new Set();
+
+  // Liens horizontaux
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cell = gridData[r]?.[c];
+      if (!cell || cell.type !== 'teleporter' || cell.direction !== 'horizontal') continue;
+      if (visited.has(`${r},${c}`)) continue;
+
+      // Trouver toute la chaine horizontale
+      const chainCells = [];
+      let cc = c;
+      while (cc < cols) {
+        const cur = gridData[r]?.[cc];
+        if (!cur || cur.type !== 'teleporter' || cur.direction !== 'horizontal') break;
+        chainCells.push([r, cc]);
+        visited.add(`${r},${cc}`);
+        cc++;
+      }
+
+      // Trouver les cases aux extremites
+      const fromId = posToId[`${r},${c - 1}`];
+      const toId = posToId[`${r},${cc}`];
+
+      if (fromId !== undefined && toId !== undefined) {
+        tiles[fromId].adjacencies.east = { tileId: toId, isLink: true };
+        tiles[toId].adjacencies.west = { tileId: fromId, isLink: true };
+        links.push({ from: fromId, to: toId, cells: chainCells, direction: 'horizontal' });
+      }
+    }
+  }
+
+  // Liens verticaux
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < rows; r++) {
+      const cell = gridData[r]?.[c];
+      if (!cell || cell.type !== 'teleporter' || cell.direction !== 'vertical') continue;
+      if (visited.has(`${r},${c}`)) continue;
+
+      const chainCells = [];
+      let rr = r;
+      while (rr < rows) {
+        const cur = gridData[rr]?.[c];
+        if (!cur || cur.type !== 'teleporter' || cur.direction !== 'vertical') break;
+        chainCells.push([rr, c]);
+        visited.add(`${rr},${c}`);
+        rr++;
+      }
+
+      const fromId = posToId[`${r - 1},${c}`];
+      const toId = posToId[`${rr},${c}`];
+
+      if (fromId !== undefined && toId !== undefined) {
+        tiles[fromId].adjacencies.south = { tileId: toId, isLink: true };
+        tiles[toId].adjacencies.north = { tileId: fromId, isLink: true };
+        links.push({ from: fromId, to: toId, cells: chainCells, direction: 'vertical' });
+      }
+    }
+  }
+
+  return links;
+}
+
 // === Mouvement ===
 
-// Retourne les deplacements possibles depuis une case, en respectant le non-demi-tour
 export function getAvailableMoves(tiles, tileId, lastDirection) {
   const tile = tiles[tileId];
   const blocked = lastDirection ? OPPOSITE_DIR[lastDirection] : null;
@@ -203,7 +227,7 @@ export function getAvailableMoves(tiles, tileId, lastDirection) {
     }
   }
 
-  // Fallback si aucun mouvement (ne devrait pas arriver sur un bon plateau)
+  // Fallback si aucun mouvement
   if (moves.length === 0) {
     for (const [dir, adj] of Object.entries(tile.adjacencies)) {
       if (adj) {
@@ -223,7 +247,6 @@ export function calculateToll(tiles, tileId) {
 
   let baseToll = Math.floor(tile.currentValue * TOLL_RATE);
 
-  // Bonus de chaine : cases adjacentes (non-lien) du meme proprietaire
   let chainCount = 0;
   for (const adj of Object.values(tile.adjacencies)) {
     if (adj && !adj.isLink && tiles[adj.tileId].owner === tile.owner) {
