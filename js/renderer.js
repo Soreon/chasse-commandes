@@ -73,50 +73,23 @@ export class Renderer {
     this.updateLayout(rows, cols);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-    // 1. Connexions entre cases adjacentes
-    this.drawConnections(tiles);
-
-    // 2. Liens (teleporteurs)
+    // 1. Liens (teleporteurs)
     this.drawLinks(links, tiles);
 
-    // 3. Cases
+    // 2. Cases
     for (const tile of tiles) {
       this.drawTile(tile, players);
     }
 
-    // 4. Joueurs (sauf celui en animation)
+    // 3. Joueurs (sauf celui en animation)
     for (const player of players) {
       if (animState?.active && animState.playerId === player.id) continue;
       this.drawPlayer(player, tiles, players, currentPlayerId);
     }
 
-    // 5. Animation de deplacement
+    // 4. Animation de deplacement
     if (animState?.active) {
       this.drawMovingPlayer(animState, tiles);
-    }
-  }
-
-  // Lignes entre cases adjacentes (non-lien)
-  drawConnections(tiles) {
-    const ctx = this.ctx;
-    ctx.strokeStyle = '#1e2440';
-    ctx.lineWidth = 2;
-
-    const drawn = new Set();
-    for (const tile of tiles) {
-      for (const [, adj] of Object.entries(tile.adjacencies)) {
-        if (!adj || adj.isLink) continue;
-        const key = Math.min(tile.id, adj.tileId) + '-' + Math.max(tile.id, adj.tileId);
-        if (drawn.has(key)) continue;
-        drawn.add(key);
-
-        const from = this.getTileCenter(tile);
-        const to = this.getTileCenter(tiles[adj.tileId]);
-        ctx.beginPath();
-        ctx.moveTo(from.x, from.y);
-        ctx.lineTo(to.x, to.y);
-        ctx.stroke();
-      }
     }
   }
 
@@ -232,14 +205,29 @@ export class Renderer {
       ctx.stroke();
     }
 
-    // Symbole
-    const symbol = TILE_SYMBOLS[tile.type];
-    if (symbol) {
-      ctx.fillStyle = '#fff';
-      ctx.font = `bold ${Math.max(12, this.tileSize * 0.32)}px sans-serif`;
+    // Indicateur de case de (dice) sur les damage tracks
+    if (tile.type === TileType.DAMAGE && tile.hasDice) {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = `bold ${Math.max(14, this.tileSize * 0.4)}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(symbol, x, y);
+      ctx.fillText('\u2B22', x, y); // hexagone comme symbole de
+      // Contour dore
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(x - half, y - half, this.tileSize, this.tileSize, r);
+      ctx.stroke();
+    } else {
+      // Symbole normal
+      const symbol = TILE_SYMBOLS[tile.type];
+      if (symbol) {
+        ctx.fillStyle = '#fff';
+        ctx.font = `bold ${Math.max(12, this.tileSize * 0.32)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(symbol, x, y);
+      }
     }
 
     // Niveau et peage pour les cases possedees
