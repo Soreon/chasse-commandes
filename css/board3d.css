@@ -1,0 +1,301 @@
+/* === Vue 3D du plateau === */
+
+:root {
+  --cell-size: 80px;
+  --grid-gap: 8px;
+}
+
+#board-3d-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  cursor: grab;
+  background: #1a1a2e;
+}
+
+#board-3d-wrapper:active {
+  cursor: grabbing;
+}
+
+#board-3d-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+}
+
+#board-3d-view {
+  position: relative;
+  transition: transform 0.6s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transform-style: preserve-3d;
+  transform-origin: 0 0 0;
+  transform: perspective(1000px) rotateX(60deg) rotateZ(0deg) translateX(0px) translateY(0px);
+  will-change: transform;
+}
+
+.board-3d {
+  display: grid;
+  grid-gap: var(--grid-gap);
+  margin: 0 auto;
+  transform-style: preserve-3d;
+}
+
+/* === Cellule 3D === */
+
+.board-3d .cell3d {
+  aspect-ratio: 1 / 1;
+  --cell-height: var(--cell-size);
+  --cell-width: var(--cell-size);
+  height: var(--cell-height);
+  width: var(--cell-width);
+  transform-style: preserve-3d;
+  transform-origin: center center;
+  position: relative;
+  --cell-color: #ffffff;
+  --cell-image: none;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  background-image: none;
+}
+
+.board-3d .cell3d.empty {
+  pointer-events: none;
+}
+
+/* === Faces 3D === */
+
+.board-3d .cell3d .face {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: visible;
+  --face-height: var(--cell-height);
+  --face-width: var(--cell-width);
+  height: var(--face-height);
+  width: var(--face-width);
+  background-color: var(--cell-color);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  background-image: var(--cell-image);
+  transform: scale(1.01);
+}
+
+.board-3d .cell3d .face.Xplus {
+  transform: rotateY(90deg) translateX(calc(var(--cell-size) / 2)) translateZ(calc(var(--cell-size) / 2)) rotateZ(-90deg);
+}
+
+.board-3d .cell3d .face.Xminus {
+  transform: rotateY(-90deg) translateX(calc((var(--cell-size) * -1) / 2)) translateZ(calc(var(--cell-size) / 2)) rotateZ(90deg);
+}
+
+.board-3d .cell3d .face.Yplus {
+  transform: rotateX(90deg) translateY(calc((var(--cell-size) * -1) / 2)) translateZ(calc(var(--cell-size) / 2)) rotateZ(180deg);
+}
+
+.board-3d .cell3d .face.Yminus {
+  transform: rotateX(90deg) translateY(calc((var(--cell-size) * -1) / 2)) translateZ(calc((var(--cell-size) * -1) / 2)) rotateY(180deg) rotateZ(180deg);
+}
+
+.board-3d .cell3d .face.Zminus {
+  transform: rotateZ(-90deg) translateZ(calc(var(--cell-size) * -1)) rotateX(180deg) rotateZ(-90deg);
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+}
+
+.board-3d .cell3d .face.Zplus {
+  /* Top face - default position */
+}
+
+/* === Shading des voisins === */
+
+.board-3d .cell3d.tn:not(.empty) .face.Yplus,
+.board-3d .cell3d.bn:not(.empty) .face.Yminus,
+.board-3d .cell3d.rn:not(.empty) .face.Xplus,
+.board-3d .cell3d.ln:not(.empty) .face.Xminus {
+  filter: brightness(0.6) contrast(1.6);
+}
+
+/* === Types de cases === */
+
+.board-3d .cell3d.t-blue-checkpoint { --cell-image: url('../images/blueCheckpoint.png'); }
+.board-3d .cell3d.t-yellow-checkpoint { --cell-image: url('../images/yellowCheckpoint.png'); }
+.board-3d .cell3d.t-red-checkpoint { --cell-image: url('../images/redCheckpoint.png'); }
+.board-3d .cell3d.t-green-checkpoint { --cell-image: url('../images/greenCheckpoint.png'); }
+.board-3d .cell3d.t-vertical-teleporter { --cell-image: url('../images/verticalTeleporter.png'); }
+.board-3d .cell3d.t-horizontal-teleporter { --cell-image: url('../images/horizontalTeleporter.png'); }
+.board-3d .cell3d.t-start-panel { --cell-image: url('../images/startPanel.png'); }
+.board-3d .cell3d.t-special-panel { --cell-image: url('../images/specialPanel.png'); }
+.board-3d .cell3d.t-gp-booster-panel { --cell-image: url('../images/gpBoosterPanel.png'); }
+.board-3d .cell3d.t-damage-panel { --cell-image: url('../images/damagePanel.png'); }
+.board-3d .cell3d.t-command-panel { --cell-image: url('../images/commandPanel.png'); --cell-color: #292929; }
+.board-3d .cell3d.t-bonus-panel { --cell-image: url('../images/bonusPanel.png'); --cell-color: #292929; }
+
+/* Colored command panels */
+.board-3d .cell3d.t-colored-command-panel-1 { --cell-image: url('../images/coloredCommandPanel/1.png'); --cell-color: #dfc473; }
+.board-3d .cell3d.t-colored-command-panel-2 { --cell-image: url('../images/coloredCommandPanel/2.png'); --cell-color: #c2d565; }
+.board-3d .cell3d.t-colored-command-panel-3 { --cell-image: url('../images/coloredCommandPanel/3.png'); --cell-color: #a4e277; }
+.board-3d .cell3d.t-colored-command-panel-4 { --cell-image: url('../images/coloredCommandPanel/4.png'); --cell-color: #99e199; }
+.board-3d .cell3d.t-colored-command-panel-5 { --cell-image: url('../images/coloredCommandPanel/5.png'); --cell-color: #8fe2b1; }
+.board-3d .cell3d.t-colored-command-panel-6 { --cell-image: url('../images/coloredCommandPanel/6.png'); --cell-color: #82e2d1; }
+.board-3d .cell3d.t-colored-command-panel-7 { --cell-image: url('../images/coloredCommandPanel/7.png'); --cell-color: #9fd1e1; }
+.board-3d .cell3d.t-colored-command-panel-8 { --cell-image: url('../images/coloredCommandPanel/8.png'); --cell-color: #b6c4e1; }
+.board-3d .cell3d.t-colored-command-panel-9 { --cell-image: url('../images/coloredCommandPanel/9.png'); --cell-color: #c1bfe1; }
+.board-3d .cell3d.t-colored-command-panel-10 { --cell-image: url('../images/coloredCommandPanel/10.png'); --cell-color: #cdb9e1; }
+.board-3d .cell3d.t-colored-command-panel-11 { --cell-image: url('../images/coloredCommandPanel/11.png'); --cell-color: #ddb1e1; }
+.board-3d .cell3d.t-colored-command-panel-12 { --cell-image: url('../images/coloredCommandPanel/12.png'); --cell-color: #e1b1d3; }
+.board-3d .cell3d.t-colored-command-panel-13 { --cell-image: url('../images/coloredCommandPanel/13.png'); --cell-color: #e1b5c1; }
+.board-3d .cell3d.t-colored-command-panel-14 { --cell-image: url('../images/coloredCommandPanel/14.png'); --cell-color: #e1b8b0; }
+.board-3d .cell3d.t-colored-command-panel-15 { --cell-image: url('../images/coloredCommandPanel/15.png'); --cell-color: #e0bf93; }
+.board-3d .cell3d.t-colored-command-panel-16 { --cell-image: url('../images/coloredCommandPanel/16.png'); --cell-color: #d0ce6a; }
+
+/* === Teleporters === */
+
+.board-3d .cell3d.t-horizontal-teleporter {
+  transform: scale3d(1.2, 0.3, 0.3) translateX(0px) translateZ(calc(-1 * var(--cell-height)));
+}
+.board-3d .cell3d.t-horizontal-teleporter .face.Xplus,
+.board-3d .cell3d.t-horizontal-teleporter .face.Xminus {
+  background-image: none;
+  background-color: #71dff8;
+}
+
+.board-3d .cell3d.t-vertical-teleporter {
+  transform: scale3d(0.3, 1.2, 0.3) translateY(0px) translateZ(calc(-1 * var(--cell-height)));
+}
+.board-3d .cell3d.t-vertical-teleporter .face.Yplus,
+.board-3d .cell3d.t-vertical-teleporter .face.Yminus {
+  background-image: none;
+  background-color: #71dff8;
+}
+.board-3d .cell3d.t-vertical-teleporter .face.Xplus {
+  transform: rotateY(90deg) translateX(calc(var(--cell-size) / 2)) translateZ(calc(var(--cell-size) / 2)) rotateZ(0deg);
+}
+.board-3d .cell3d.t-vertical-teleporter .face.Xminus {
+  transform: rotateY(-90deg) translateX(calc((var(--cell-size) * -1) / 2)) translateZ(calc(var(--cell-size) / 2)) rotateZ(0deg);
+}
+
+/* === Damage panels (no-box) === */
+
+.board-3d .cell3d.no-box .face.Xplus,
+.board-3d .cell3d.no-box .face.Xminus,
+.board-3d .cell3d.no-box .face.Yplus,
+.board-3d .cell3d.no-box .face.Yminus,
+.board-3d .cell3d.no-box .face.Zminus {
+  display: none;
+  box-shadow: none;
+}
+
+.board-3d .cell3d.no-box .face.Zplus {
+  transform: translateZ(calc(var(--cell-size) * -1));
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+}
+
+/* === Selection / highlight === */
+
+.board-3d .cell3d.selected .face.Zplus {
+  animation: cell3d-pulse 0.7s alternate infinite linear;
+}
+
+@keyframes cell3d-pulse {
+  0% { filter: brightness(1); }
+  100% { filter: brightness(1.2); }
+}
+
+/* === Bonus panel top face === */
+
+.board-3d .cell3d.t-bonus-panel .face.Zplus {
+  background-image: url('../images/bonusPanel.png');
+  background-size: cover;
+}
+
+/* === Ownership overlay === */
+
+.board-3d .cell3d .owner-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 3px solid transparent;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* === Player tokens === */
+
+.board-3d .player-token-3d {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  z-index: 10;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+/* === Prize Cube 3D (dice) === */
+
+.board-3d .prize-cube-3d {
+  position: absolute;
+  width: calc(var(--cell-size) * 0.6);
+  height: calc(var(--cell-size) * 0.6);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) translateZ(2px);
+  z-index: 5;
+  pointer-events: none;
+}
+.board-3d .prize-cube-3d img {
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+/* === Level indicator === */
+
+.board-3d .cell3d .level-indicator {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 10px;
+  font-weight: bold;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 1px 4px;
+  border-radius: 3px;
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* === Minimap === */
+
+#board-minimap {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 220px;
+  height: 220px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 20;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+#board-minimap canvas {
+  width: 100%;
+  height: 100%;
+}

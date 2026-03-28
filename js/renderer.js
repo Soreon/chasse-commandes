@@ -238,15 +238,19 @@ export class Renderer {
 
   resize() {
     const container = this.canvas.parentElement;
-    this.canvas.width = container.clientWidth;
-    this.canvas.height = container.clientHeight;
+    // Minimap mode: render at higher resolution for crisp display
+    const isMinimap = container.id === 'board-minimap';
+    const scale = isMinimap ? 3 : 1;
+    this.canvas.width = container.clientWidth * scale;
+    this.canvas.height = container.clientHeight * scale;
+    this.minimapMode = isMinimap;
   }
 
   updateLayout(rows, cols) {
     this.boardRows = rows;
     this.boardCols = cols;
-    const padX = 80;
-    const padY = 40;
+    const padX = this.minimapMode ? 10 : 80;
+    const padY = this.minimapMode ? 10 : 40;
     this.cellSize = Math.min(
       (this.canvas.width - padX * 2) / cols,
       (this.canvas.height - padY * 2) / rows

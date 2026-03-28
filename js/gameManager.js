@@ -4,6 +4,7 @@ import { TileType, updateTileValue, updateAllTolls, getBuyoutCost, getUpgradeCos
 import { rollDie, CardType, createCard, drawRandomCards, HandType, HAND_DEFINITIONS, getAvailableHands, selectCardsForHand, canPlaceOnTile } from './cards.js';
 import { createPlayer, calculateNetWorth, addGP, transferGP, refillHand, removeCardFromHand, allCheckpointsVisited, resetCheckpoints, PLAYER_COLORS, AI_NAMES } from './player.js';
 import { Renderer } from './renderer.js';
+import { Renderer3D } from './renderer3d.js';
 import { AI } from './ai.js';
 
 export class GameManager {
@@ -93,10 +94,16 @@ export class GameManager {
       }
     }
 
-    // Renderer
+    // Renderer 2D (minimap)
     const canvas = document.getElementById('board-canvas');
     this.renderer = new Renderer(canvas);
     this.renderer.loadImages();
+
+    // Renderer 3D (vue principale)
+    const wrapper3d = document.getElementById('board-3d-wrapper');
+    this.renderer3d = new Renderer3D();
+    this.renderer3d.init(wrapper3d);
+    this.renderer3d.generateBoard(this.boardData);
 
     this.render();
     this.log(`Partie lancee ! Objectif : ${this.gpGoal} GP de valeur nette.`);
@@ -1509,6 +1516,9 @@ export class GameManager {
   render() {
     if (this.renderer) {
       this.renderer.render(this.boardData, this.players, this.currentPlayer?.id, this.animState, this.prizeCubes, this.honeyPots);
+    }
+    if (this.renderer3d) {
+      this.renderer3d.updateGameState(this.players, this.currentPlayer?.id, this.prizeCubes, this.board);
     }
   }
 

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Command Board - Kingdom Hearts</title>
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/board3d.css">
 </head>
 <body>
   <!-- Menu principal -->
@@ -70,7 +71,12 @@
 
     <!-- Zone plateau -->
     <div id="board-container">
-      <canvas id="board-canvas"></canvas>
+      <!-- Vue 3D principale -->
+      <div id="board-3d-wrapper"></div>
+      <!-- Minimap 2D -->
+      <div id="board-minimap">
+        <canvas id="board-canvas"></canvas>
+      </div>
       <!-- Overlay pour les choix de direction -->
       <div id="direction-overlay" class="overlay hidden">
         <div class="overlay-content">
