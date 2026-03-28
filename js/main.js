@@ -16,7 +16,7 @@ async function loadBoards() {
     boardsData = await resp.json();
     const select = document.getElementById('board-select');
     select.innerHTML = '';
-    for (const name of Object.keys(boardsData)) {
+    for (const name of Object.keys(boardsData).reverse()) {
       const opt = document.createElement('option');
       opt.value = name;
       opt.textContent = name;

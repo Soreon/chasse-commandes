@@ -325,18 +325,25 @@ export class GameManager {
     this.log(`${player.name} monte sur le Prize Cube ! (compteur: ${cube.counter})`, 'important');
   }
 
-  // Le joueur descend du Prize Cube et recoit les GP accumules
-  dismountPrizeCube(player, cube) {
+  // Le joueur descend du cube, le cube reste sur place (sortie de piste damage)
+  dismountCubeStay(player, cube) {
+    player.prizeCube = null;
+    cube.riderId = null;
+    this.log(`${player.name} quitte la piste damage et descend du Prize Cube.`);
+  }
+
+  // Le compteur du cube atteint 0 : il se brise, le joueur recoit les GP, le cube respawn
+  dismountCubeBreak(player, cube) {
     const gp = cube.accumulatedGP;
     addGP(player, gp);
     this.log(`Le Prize Cube se brise ! ${player.name} recoit ${gp} GP accumules !`, 'important');
     player.prizeCube = null;
 
-    // Respawn le cube a sa position d'origine apres un delai
+    // Respawn le cube a sa position d'origine
     cube.riderId = null;
     cube.tileId = cube.sourceTileId;
     cube.counter = cube.maxCounter;
-    cube.accumulatedGP = 200; // GP de base initial
+    cube.accumulatedGP = 200;
   }
 
   // Piratage : un autre joueur vole le Prize Cube
@@ -452,22 +459,28 @@ export class GameManager {
     const riddenCube = this.getPlayerPrizeCube(player.id);
 
     if (riddenCube) {
-      // Le joueur chevauche un Prize Cube
-      riddenCube.tileId = move.tileId; // Le cube suit le joueur
-
       if (toTile.type === TileType.DAMAGE) {
+        // Le cube suit le joueur sur la piste damage
+        riddenCube.tileId = move.tileId;
+
         // Accumuler les GP des degats evites
         const damage = 100 + Math.floor(Math.random() * 200);
         riddenCube.accumulatedGP += damage;
         riddenCube.counter--;
 
         if (riddenCube.counter <= 0) {
-          // Le cube se brise
-          this.dismountPrizeCube(player, riddenCube);
+          // Le cube se brise, respawn a la source, joueur recoit les GP
+          this.dismountCubeBreak(player, riddenCube);
         }
       } else {
-        // Sortie de la zone de degats : le cube se brise aussi
-        this.dismountPrizeCube(player, riddenCube);
+        // Sortie de la piste damage : le joueur descend, le cube reste sur la derniere case damage
+        this.dismountCubeStay(player, riddenCube);
+      }
+    } else if (toTile.type === TileType.DAMAGE) {
+      // Joueur sans cube passe sur une case damage avec un cube libre : monter dessus
+      const cubeHere = this.getPrizeCubeAtTile(move.tileId);
+      if (cubeHere) {
+        this.mountPrizeCube(player, cubeHere);
       }
     }
 
