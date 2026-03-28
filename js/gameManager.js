@@ -152,6 +152,7 @@ export class GameManager {
         if (target) {
           target.stunned = true;
           this.log(`${player.name} joue Stun sur ${target.name} ! Tour passe.`, 'important');
+          this.showNotif('⚡', `${target.name} est etourdi !`, 'negative');
         }
         break;
 
@@ -223,6 +224,7 @@ export class GameManager {
           const t = targets[Math.floor(Math.random() * targets.length)];
           t.stunned = true;
           this.log(`Fortune du Joker : Stun ! ${t.name} passe son tour.`, 'important');
+          this.showNotif('⚡', `${t.name} est etourdi !`, 'negative');
         }
       },
       () => {
@@ -637,6 +639,7 @@ export class GameManager {
         } else {
           this.log(`${player.name} active le checkpoint ${color} ! +${CHECKPOINT_BONUS_GP} GP`);
         }
+        this.showNotif('🚩', `Checkpoint ${color} ! +${CHECKPOINT_BONUS_GP} GP`, 'positive');
       }
     }
 
@@ -943,6 +946,7 @@ export class GameManager {
           player.justiceTurns = 5;
           this.captainJusticeActive = true;
           this.log(`Captain Justice rejoint ${player.name} pour 5 tours !`, 'important');
+          this.showNotif('🦸', `Captain Justice rejoint ${player.name} !`, 'positive');
           return 'Captain Justice vous rejoint !';
         }
         addGP(player, 200);
@@ -953,6 +957,7 @@ export class GameManager {
           player.darkTurns = 5;
           this.captainDarkActive = true;
           this.log(`Captain Dark s'attache a ${player.name} pour 5 tours !`, 'negative');
+          this.showNotif('🦹', `Captain Dark s'attache a ${player.name} !`, 'negative');
           return 'Captain Dark vous hante !';
         }
         addGP(player, -150);
@@ -979,12 +984,14 @@ export class GameManager {
         this.captainJusticeActive = true;
         player.justiceTurns = 5;
         this.log(`Captain Justice rejoint ${player.name} pour 5 tours !`, 'important');
+        this.showNotif('🦸', `Captain Justice rejoint ${player.name} !`, 'positive');
         this.showEventAndEndTurn(player, 'Captain Justice vous rejoint !');
         return;
       } else if (!isCaptainJustice && !this.captainDarkActive) {
         this.captainDarkActive = true;
         player.darkTurns = 5;
         this.log(`Captain Dark s'attache a ${player.name} pour 5 tours !`, 'negative');
+        this.showNotif('🦹', `Captain Dark s'attache a ${player.name} !`, 'negative');
         this.showEventAndEndTurn(player, 'Captain Dark vous hante !');
         return;
       }
@@ -1243,6 +1250,7 @@ export class GameManager {
     if (player.justiceTurns > 0) {
       addGP(player, 100);
       this.log(`Captain Justice donne 100 GP a ${player.name}.`);
+      this.showNotif('🦸', `Captain Justice : +100 GP`, 'positive');
 
       // 30% de chance d'acheter une case libre adjacente pour le joueur
       if (Math.random() < 0.3) {
@@ -1257,6 +1265,7 @@ export class GameManager {
             updateTileValue(this.board, adjTile.id);
             updateAllTolls(this.board);
             this.log(`Captain Justice achete la case ${adjTile.id} pour ${player.name} !`, 'important');
+            this.showNotif('🦸', `Justice achete la case ${adjTile.id} !`, 'positive');
             break;
           }
         }
@@ -1273,6 +1282,7 @@ export class GameManager {
     if (player.darkTurns > 0) {
       addGP(player, -100);
       this.log(`Captain Dark vole 100 GP a ${player.name} !`, 'negative');
+      this.showNotif('🦹', `Captain Dark : -100 GP`, 'negative');
 
       // 25% de chance d'acheter la case la plus chere disponible avec les GP du joueur
       if (Math.random() < 0.25) {
@@ -1287,6 +1297,7 @@ export class GameManager {
           updateTileValue(this.board, t.id);
           updateAllTolls(this.board);
           this.log(`Captain Dark force l'achat de la case ${t.id} (${t.baseValue} GP) !`, 'negative');
+          this.showNotif('🦹', `Dark force l'achat case ${t.id} !`, 'negative');
         }
       }
 
