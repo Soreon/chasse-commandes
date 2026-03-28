@@ -149,6 +149,17 @@ export function parseBoardJSON(boardEntry) {
     }
   }
 
+  // Phase 1b : assigner les zones aux cases depuis zoneDefs
+  for (const zone of zoneDefs) {
+    if (!zone.tiles) continue;
+    for (const [r, c] of zone.tiles) {
+      const id = posToId[`${r},${c}`];
+      if (id !== undefined) {
+        tiles[id].zone = zone.id;
+      }
+    }
+  }
+
   // Phase 2 : calculer les adjacences orthogonales
   for (const tile of tiles) {
     for (const [dir, [dr, dc]] of Object.entries(DIR_OFFSETS)) {
@@ -162,7 +173,7 @@ export function parseBoardJSON(boardEntry) {
   // Phase 3 : detecter et ajouter les liens depuis les chaines de teleporters
   const links = detectLinks(gridData, rows, cols, posToId, tiles);
 
-  return { tiles, links, rows, cols, startTileId, posToId, zones: zoneDefs };
+  return { tiles, links, rows, cols, startTileId, posToId, zones: zoneDefs, _rawGrid: gridData };
 }
 
 // === Detection automatique des liens ===
