@@ -165,8 +165,8 @@ export class Renderer {
   }
 
   // === Rendu principal ===
-  render(boardData, players, currentPlayerId, animState, prizeCubes) {
-    this._lastRenderArgs = [boardData, players, currentPlayerId, animState, prizeCubes];
+  render(boardData, players, currentPlayerId, animState, prizeCubes, honeyPots) {
+    this._lastRenderArgs = [boardData, players, currentPlayerId, animState, prizeCubes, honeyPots];
     if (!this.imagesLoaded) return;
 
     const { tiles, links, rows, cols, zones } = boardData;
@@ -189,6 +189,21 @@ export class Renderer {
     // 2. Cases
     for (const tile of tiles) {
       this.drawTile(tile, players, prizeCubes);
+    }
+
+    // 2b. Pots de miel (Hunny Hunt)
+    if (honeyPots && honeyPots.length > 0) {
+      for (const pot of honeyPots) {
+        const potTile = tiles[pot.tileId];
+        if (potTile) {
+          const p = this.getTileCenter(potTile);
+          const fontSize = Math.max(10, this.tileSize * 0.35);
+          ctx.font = `${fontSize}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('🍯', p.x, p.y);
+        }
+      }
     }
 
     // 3. Joueurs (sauf celui en animation)
@@ -360,15 +375,15 @@ export class Renderer {
       ctx.font = '12px sans-serif';
       ctx.fillText('*', px + PLAYER_RADIUS, py - PLAYER_RADIUS);
     }
-    if (player.hasJustice) {
+    if (player.justiceTurns > 0) {
       ctx.fillStyle = '#0f0';
       ctx.font = '10px sans-serif';
-      ctx.fillText('J', px - PLAYER_RADIUS - 6, py);
+      ctx.fillText(`J${player.justiceTurns}`, px - PLAYER_RADIUS - 10, py);
     }
-    if (player.hasDark) {
+    if (player.darkTurns > 0) {
       ctx.fillStyle = '#f00';
       ctx.font = '10px sans-serif';
-      ctx.fillText('D', px - PLAYER_RADIUS - 6, py);
+      ctx.fillText(`D${player.darkTurns}`, px - PLAYER_RADIUS - 10, py);
     }
   }
 

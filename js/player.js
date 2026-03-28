@@ -25,8 +25,8 @@ export function createPlayer(id, name, isHuman = false, color = '#4a9eff') {
     confusedTurns: 0,    // Nombre de tours restants avec directions aleatoires
     gpProtector: 0,      // Nombre de protections GP actives (cumulable)
     doubleTollTurns: 0,  // Nombre de tours restants avec peages doubles
-    hasJustice: false,   // Captain Justice attache
-    hasDark: false,      // Captain Dark attache
+    justiceTurns: 0,     // Tours restants avec Captain Justice
+    darkTurns: 0,        // Tours restants avec Captain Dark
     prizeCube: null,     // { sourceId, counter, accumulatedGP } si chevauche un Prize Cube
     boosterPercent: 1,   // Pourcentage GP Booster accumule (1% initial)
     // Historique pour anti-demi-tour (direction du dernier deplacement)

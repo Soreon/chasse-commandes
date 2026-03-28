@@ -74,7 +74,7 @@ document.getElementById('btn-play').addEventListener('click', () => {
   game.onDirectionChoice = showDirectionChoice;
   game.onVictory = showVictory;
 
-  game.init(playerName, opponentCount, gpGoal, boardData, spectator);
+  game.init(playerName, opponentCount, gpGoal, boardData, spectator, boardName);
 });
 
 // === Noms des types de cartes ===
@@ -385,6 +385,71 @@ function showOverlay(type, tile, player, board, callback) {
       tilesContainer.appendChild(el);
     }
 
+  } else if (type === 'teleportChoice') {
+    // Keyblade Glider : choisir une case de destination
+    const tiles = tile.tiles;
+    const typeNames = {
+      start: 'Depart', bonus: 'Bonus', damage: 'Danger', event: 'Special',
+      normal: 'Commande', booster: 'Booster',
+      checkpoint_red: 'CP Rouge', checkpoint_blue: 'CP Bleu',
+      checkpoint_yellow: 'CP Jaune', checkpoint_green: 'CP Vert',
+    };
+
+    content.innerHTML = `
+      <h3>Keyblade Glider !</h3>
+      <p>Choisissez une case de destination :</p>
+      <div id="teleport-tiles" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:10px 0;max-height:300px;overflow-y:auto"></div>
+    `;
+    overlay.classList.remove('hidden');
+
+    const container = content.querySelector('#teleport-tiles');
+    // Filtrer les cases interessantes (pas vides)
+    const interestingTiles = tiles.filter(t => t.type !== 'normal' || t.owner !== null);
+    const displayTiles = interestingTiles.length > 0 ? interestingTiles : tiles;
+
+    for (const t of displayTiles) {
+      const el = document.createElement('button');
+      el.className = 'overlay-btn';
+      el.style.cssText = 'padding:6px 10px;font-size:0.8rem';
+      const typeName = typeNames[t.type] || t.type;
+      let label = `${typeName} #${t.id}`;
+      if (t.owner !== null) {
+        const ownerP = game.players.find(p => p.id === t.owner);
+        label += ` (${ownerP?.name})`;
+      }
+      el.textContent = label;
+      el.addEventListener('click', () => {
+        overlay.classList.add('hidden');
+        if (callback) callback(t.id);
+      });
+      container.appendChild(el);
+    }
+
+  } else if (type === 'pixieDust') {
+    // Pixie Dust : choisir un adversaire puis une case
+    const opponents = tile.players.filter(p => p.id !== player.id);
+
+    content.innerHTML = `
+      <h3>Pixie Dust !</h3>
+      <p>Choisissez un adversaire a deplacer :</p>
+      <div id="pixie-targets" style="display:flex;gap:8px;justify-content:center;margin:10px 0"></div>
+    `;
+    overlay.classList.remove('hidden');
+
+    const targetsContainer = content.querySelector('#pixie-targets');
+    for (const opp of opponents) {
+      const btn = document.createElement('button');
+      btn.className = 'overlay-btn';
+      btn.style.borderColor = opp.color;
+      btn.style.color = opp.color;
+      btn.textContent = opp.name;
+      btn.addEventListener('click', () => {
+        // Phase 2 : choisir la destination
+        showPixieDustDestination(overlay, content, opp, tile.tiles, callback);
+      });
+      targetsContainer.appendChild(btn);
+    }
+
   } else if (type === 'event') {
     content.innerHTML = `
       <h3>${tile.message}</h3>
@@ -396,6 +461,47 @@ function showOverlay(type, tile, player, board, callback) {
       overlay.classList.add('hidden');
       if (callback) callback();
     });
+  }
+}
+
+function showPixieDustDestination(overlay, content, target, tiles, callback) {
+  const typeNames = {
+    start: 'Depart', bonus: 'Bonus', damage: 'Danger', event: 'Special',
+    normal: 'Commande', booster: 'Booster',
+    checkpoint_red: 'CP Rouge', checkpoint_blue: 'CP Bleu',
+    checkpoint_yellow: 'CP Jaune', checkpoint_green: 'CP Vert',
+  };
+
+  content.innerHTML = `
+    <h3>Envoyer ${target.name} ou ?</h3>
+    <div id="pixie-dest" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:10px 0;max-height:300px;overflow-y:auto"></div>
+  `;
+
+  const container = content.querySelector('#pixie-dest');
+  // Montrer d'abord les cases de degats et les cases avec peage
+  const sorted = [...tiles].sort((a, b) => {
+    const scoreA = a.type === 'damage' ? 100 : (a.tollValue || 0);
+    const scoreB = b.type === 'damage' ? 100 : (b.tollValue || 0);
+    return scoreB - scoreA;
+  });
+
+  for (const t of sorted.slice(0, 30)) {
+    const el = document.createElement('button');
+    el.className = 'overlay-btn';
+    if (t.type === 'damage') el.classList.add('danger');
+    el.style.cssText = 'padding:6px 10px;font-size:0.8rem';
+    const typeName = typeNames[t.type] || t.type;
+    let label = `${typeName} #${t.id}`;
+    if (t.tollValue > 0) {
+      const ownerP = game.players.find(p => p.id === t.owner);
+      label += ` (${t.tollValue}G - ${ownerP?.name})`;
+    }
+    el.textContent = label;
+    el.addEventListener('click', () => {
+      overlay.classList.add('hidden');
+      if (callback) callback(target.id, t.id);
+    });
+    container.appendChild(el);
   }
 }
 

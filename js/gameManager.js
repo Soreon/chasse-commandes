@@ -36,12 +36,19 @@ export class GameManager {
 
     // Prize Cubes : { id, sourceTileId, tileId, counter, maxCounter, accumulatedGP, riderId }
     this.prizeCubes = [];
+
+    // Hunny Hunt : pots de miel places sur le plateau { tileId, isGood }
+    this.honeyPots = [];
+
+    // Gigawatt Jolt : { playerId, turnsLeft } - vol de GP aux adversaires
+    this.sparkyEffect = null;
   }
 
   // Initialise une nouvelle partie
-  init(playerName, opponentCount, gpGoal, boardData, spectator = false) {
+  init(playerName, opponentCount, gpGoal, boardData, spectator = false, boardName = '') {
     this.gpGoal = gpGoal;
     this.spectator = spectator;
+    this.boardName = boardName;
     this.board = boardData.tiles;
     this.boardData = boardData;
     this.startTileId = boardData.startTileId;
@@ -406,8 +413,12 @@ export class GameManager {
     if (moves.length === 1) {
       await this.moveToTile(moves[0], stepsRemaining);
     } else {
-      // Intersection : demander la direction
-      if (player.isHuman) {
+      // Confusion : direction aleatoire aux intersections
+      if (player.confusedTurns > 0) {
+        const randomMove = moves[Math.floor(Math.random() * moves.length)];
+        this.log(`${player.name} est confus et va au hasard !`);
+        await this.moveToTile(randomMove, stepsRemaining);
+      } else if (player.isHuman) {
         this.askDirection(moves, stepsRemaining);
       } else {
         const choice = AI.chooseDirection(player, moves, this.board, this.players);
@@ -537,6 +548,12 @@ export class GameManager {
       player.boosterPercent = Math.min((player.boosterPercent || 1) + 3, 10);
       this.log(`${player.name} passe par le Booster ! Multiplicateur: ${player.boosterPercent}%`);
     }
+
+    // Pots de miel (Hunny Hunt) - collecte en passant
+    const pot = this.honeyPots.find(p => p.tileId === tileId);
+    if (pot) {
+      this.collectHoneyPot(player, pot);
+    }
   }
 
   onPassStart(player) {
@@ -559,6 +576,12 @@ export class GameManager {
     const tile = this.board[player.position];
 
     this.phase = 'tileAction';
+
+    // Pots de miel (Hunny Hunt) - collecte a l'atterrissage
+    const pot = this.honeyPots.find(p => p.tileId === tile.id);
+    if (pot) {
+      this.collectHoneyPot(player, pot);
+    }
 
     // Checkpoint (si on s'arrete dessus aussi)
     if (isCheckpoint(tile.type)) {
@@ -864,9 +887,9 @@ export class GameManager {
       },
       () => {
         if (!this.captainJusticeActive) {
-          player.hasJustice = true;
+          player.justiceTurns = 5;
           this.captainJusticeActive = true;
-          this.log(`Captain Justice rejoint ${player.name} !`, 'important');
+          this.log(`Captain Justice rejoint ${player.name} pour 5 tours !`, 'important');
           return 'Captain Justice vous rejoint !';
         }
         addGP(player, 200);
@@ -874,9 +897,9 @@ export class GameManager {
       },
       () => {
         if (!this.captainDarkActive) {
-          player.hasDark = true;
+          player.darkTurns = 5;
           this.captainDarkActive = true;
-          this.log(`Captain Dark s'attache a ${player.name} !`, 'negative');
+          this.log(`Captain Dark s'attache a ${player.name} pour 5 tours !`, 'negative');
           return 'Captain Dark vous hante !';
         }
         addGP(player, -150);
@@ -895,37 +918,215 @@ export class GameManager {
   }
 
   handleEventTile(player) {
-    const events = [
-      () => {
-        this.players.forEach(p => addGP(p, 100));
-        this.log(`Evenement ! Tous les joueurs gagnent 100 GP !`, 'important');
-        return 'Tous les joueurs gagnent 100 GP !';
-      },
-      () => {
-        addGP(player, 200);
-        this.log(`Evenement ! Bonus de 200 GP !`);
-        return 'Bonus evenement : +200 GP';
-      },
-      () => {
-        const target = this.players.find(p => p.id !== player.id);
-        if (target) {
-          const temp = player.position;
-          player.position = target.position;
-          target.position = temp;
-          this.log(`Evenement ! ${player.name} et ${target.name} echangent leurs positions !`, 'important');
-          return `Echange de position avec ${target.name} !`;
-        }
-        return 'Rien ne se passe.';
-      },
-    ];
+    // 30% de chance de declencher Captain Justice/Dark au lieu de l'evenement
+    // (sauf sur Toon Board ou Pete est deja adversaire)
+    if (this.boardName !== 'Toon' && Math.random() < 0.3) {
+      const isCaptainJustice = Math.random() < 0.5;
+      if (isCaptainJustice && !this.captainJusticeActive) {
+        this.captainJusticeActive = true;
+        player.justiceTurns = 5;
+        this.log(`Captain Justice rejoint ${player.name} pour 5 tours !`, 'important');
+        this.showEventAndEndTurn(player, 'Captain Justice vous rejoint !');
+        return;
+      } else if (!isCaptainJustice && !this.captainDarkActive) {
+        this.captainDarkActive = true;
+        player.darkTurns = 5;
+        this.log(`Captain Dark s'attache a ${player.name} pour 5 tours !`, 'negative');
+        this.showEventAndEndTurn(player, 'Captain Dark vous hante !');
+        return;
+      }
+    }
 
-    const event = events[Math.floor(Math.random() * events.length)];
-    const message = event();
+    // Evenement specifique au plateau
+    switch (this.boardName) {
+      case 'Keyblade':
+      case 'Secret':
+        this.eventKeybladeGlider(player);
+        break;
+      case 'Royal':
+        this.eventBibbidiBoo(player);
+        break;
+      case 'Spaceship':
+        this.eventGigawattJolt(player);
+        break;
+      case 'Toon':
+        this.eventFantasia(player);
+        break;
+      case 'Skull':
+        this.eventPixieDust(player);
+        break;
+      case 'Honeypot':
+        this.eventHunnyHunt(player);
+        break;
+      default:
+        // Fallback generique
+        addGP(player, 300);
+        this.log(`Evenement special ! +300 GP.`, 'important');
+        this.showEventAndEndTurn(player, 'Evenement special : +300 GP');
+    }
+  }
 
+  showEventAndEndTurn(player, message) {
     if (player.isHuman) {
       this.showEventResult(message, () => this.endTurn());
     } else {
       this.endTurn();
+    }
+  }
+
+  // --- Keyblade Glider (Keyblade & Secret Board) ---
+  // Teleportation vers n'importe quelle case du plateau
+  eventKeybladeGlider(player) {
+    this.log(`Keyblade Glider ! ${player.name} peut se teleporter !`, 'important');
+
+    if (player.isHuman) {
+      // Montrer l'overlay de choix de case
+      if (this.onShowOverlay) {
+        this.onShowOverlay('teleportChoice', { tiles: this.board }, player, this.board, (tileId) => {
+          player.position = tileId;
+          this.log(`${player.name} se teleporte a la case ${tileId} !`, 'important');
+          this.render();
+          this.endTurn();
+        });
+      }
+    } else {
+      // IA : se teleporter sur un checkpoint non visite, ou une case vide interessante
+      const target = this.aiChooseTeleportTarget(player);
+      player.position = target;
+      this.log(`${player.name} se teleporte a la case ${target} !`, 'important');
+      this.render();
+      this.endTurn();
+    }
+  }
+
+  aiChooseTeleportTarget(player) {
+    // Priorite : checkpoint non visite > case libre dans une zone partiellement possedee > depart
+    for (const tile of this.board) {
+      if (isCheckpoint(tile.type)) {
+        const color = getCheckpointColor(tile.type);
+        if (color && !player.checkpoints[color]) return tile.id;
+      }
+    }
+    // Case libre dans une zone ou on a deja des cases
+    for (const tile of this.board) {
+      if (tile.type === TileType.NORMAL && tile.owner === null && tile.zone) {
+        const owned = this.board.filter(t => t.zone === tile.zone && t.owner === player.id).length;
+        if (owned > 0) return tile.id;
+      }
+    }
+    return this.startTileId;
+  }
+
+  // --- Bibbidi-Bobbidi-Boo (Royal Board) ---
+  // La Fee Marraine : lance un de x 200 GP
+  eventBibbidiBoo(player) {
+    const roll = rollDie();
+    const gp = roll * 200;
+    addGP(player, gp);
+    this.log(`Bibbidi-Bobbidi-Boo ! De: ${roll} x 200 = +${gp} GP !`, 'important');
+    this.showEventAndEndTurn(player, `Bibbidi-Bobbidi-Boo ! De ${roll} x 200 = +${gp} GP !`);
+  }
+
+  // --- Gigawatt Jolt (Spaceship Board) ---
+  // Sparky protege le joueur et vole des GP aux adversaires pendant 3 tours
+  eventGigawattJolt(player) {
+    this.sparkyEffect = { playerId: player.id, turnsLeft: 3 };
+    this.log(`Gigawatt Jolt ! Sparky protege ${player.name} et vole des GP aux adversaires pendant 3 tours !`, 'important');
+    this.showEventAndEndTurn(player, 'Gigawatt Jolt ! Sparky vole des GP aux adversaires pendant 3 tours !');
+  }
+
+  // --- Fantasia (Toon Board) ---
+  // Chip et Dale : 300 GP + 300 GP par case possedee
+  eventFantasia(player) {
+    const ownedCount = this.board.filter(t => t.owner === player.id).length;
+    const bonus = 300 + ownedCount * 300;
+    addGP(player, bonus);
+    this.log(`Fantasia ! +300 GP + ${ownedCount} cases x 300 GP = +${bonus} GP !`, 'important');
+    this.showEventAndEndTurn(player, `Fantasia ! +${bonus} GP (300 + ${ownedCount} x 300) !`);
+  }
+
+  // --- Pixie Dust (Skull Board) ---
+  // Deplacer un adversaire choisi sur n'importe quelle case
+  eventPixieDust(player) {
+    this.log(`Pixie Dust ! ${player.name} peut deplacer un adversaire !`, 'important');
+
+    if (player.isHuman) {
+      if (this.onShowOverlay) {
+        this.onShowOverlay('pixieDust', { players: this.players, tiles: this.board }, player, this.board, (targetId, tileId) => {
+          const target = this.players.find(p => p.id === targetId);
+          target.position = tileId;
+          this.log(`${player.name} envoie ${target.name} sur la case ${tileId} !`, 'important');
+          this.render();
+          this.endTurn();
+        });
+      }
+    } else {
+      // IA : envoyer le leader sur une case de degats ou sur sa propre case la plus chere
+      const targets = this.players.filter(p => p.id !== player.id).sort((a, b) => b.gp - a.gp);
+      const target = targets[0];
+      // Chercher une case de degats ou une case avec gros peage du joueur
+      let bestTile = null;
+      let bestScore = -Infinity;
+      for (const tile of this.board) {
+        let score = 0;
+        if (tile.type === TileType.DAMAGE) score = 30;
+        if (tile.owner === player.id && tile.tollValue > 0) score = tile.tollValue / 10;
+        if (score > bestScore) { bestScore = score; bestTile = tile; }
+      }
+      target.position = bestTile.id;
+      this.log(`${player.name} envoie ${target.name} sur la case ${bestTile.id} !`, 'important');
+      this.render();
+      this.endTurn();
+    }
+  }
+
+  // --- Hunny Hunt (Honeypot Board) ---
+  // 6 pots de miel places aleatoirement (4 bons: +500 GP, 2 mauvais: -200 GP)
+  eventHunnyHunt(player) {
+    // Placer les pots sur des cases aleatoires (pas de depart, pas deja un pot)
+    const currentTileId = this.board[player.position].id;
+    const candidates = this.board.filter(t =>
+      t.type !== TileType.START && !this.honeyPots.some(p => p.tileId === t.id)
+    );
+
+    // Melanger et prendre 6 cases (ou 5 + la case actuelle)
+    const shuffled = candidates.sort(() => Math.random() - 0.5);
+    const potTiles = shuffled.slice(0, 5);
+
+    // Un pot garanti sur la case speciale elle-meme
+    const pots = [];
+    // 4 bons, 2 mauvais - melanger
+    const types = [true, true, true, true, false, false].sort(() => Math.random() - 0.5);
+
+    // Ajouter la case actuelle en premier
+    pots.push({ tileId: currentTileId, isGood: types[0] });
+    for (let i = 0; i < potTiles.length; i++) {
+      pots.push({ tileId: potTiles[i].id, isGood: types[i + 1] });
+    }
+
+    this.honeyPots = pots;
+
+    // Le joueur collecte immediatement le pot sur sa case
+    const myPot = this.honeyPots.find(p => p.tileId === currentTileId);
+    if (myPot) {
+      this.collectHoneyPot(player, myPot);
+    }
+
+    this.log(`Hunny Hunt ! 6 pots de miel sont apparus sur le plateau !`, 'important');
+    const remaining = this.honeyPots.length;
+    this.showEventAndEndTurn(player, `Hunny Hunt ! ${remaining} pots de miel sur le plateau !`);
+  }
+
+  collectHoneyPot(player, pot) {
+    const idx = this.honeyPots.indexOf(pot);
+    if (idx !== -1) this.honeyPots.splice(idx, 1);
+
+    if (pot.isGood) {
+      addGP(player, 500);
+      this.log(`${player.name} trouve du miel ! +500 GP !`, 'important');
+    } else {
+      addGP(player, -200);
+      this.log(`${player.name} derange les abeilles ! -200 GP !`, 'negative');
     }
   }
 
@@ -957,13 +1158,26 @@ export class GameManager {
 
   // === CAPTAIN JUSTICE / DARK ===
 
+  // Transfert au passage a travers un autre joueur (meme case ou cases adjacentes)
   checkCaptainTransfer(player) {
-    if (player.hasDark) {
+    if (player.darkTurns > 0) {
       for (const other of this.players) {
         if (other.id !== player.id && other.position === player.position) {
-          player.hasDark = false;
-          other.hasDark = true;
+          const turns = player.darkTurns;
+          player.darkTurns = 0;
+          other.darkTurns = turns;
           this.log(`Captain Dark passe de ${player.name} a ${other.name} !`, 'important');
+          break;
+        }
+      }
+    }
+    if (player.justiceTurns > 0) {
+      for (const other of this.players) {
+        if (other.id !== player.id && other.position === player.position) {
+          const turns = player.justiceTurns;
+          player.justiceTurns = 0;
+          other.justiceTurns = turns;
+          this.log(`Captain Justice passe de ${player.name} a ${other.name} !`, 'important');
           break;
         }
       }
@@ -971,13 +1185,80 @@ export class GameManager {
   }
 
   applyCaptainEffects(player) {
-    if (player.hasJustice) {
-      addGP(player, 50);
-      this.log(`Captain Justice donne 50 GP a ${player.name}.`);
+    // Captain Justice : donne des GP et peut acheter une case pour le joueur
+    if (player.justiceTurns > 0) {
+      addGP(player, 100);
+      this.log(`Captain Justice donne 100 GP a ${player.name}.`);
+
+      // 30% de chance d'acheter une case libre adjacente pour le joueur
+      if (Math.random() < 0.3) {
+        const tile = this.board[player.position];
+        for (const [, adj] of Object.entries(tile.adjacencies)) {
+          if (!adj) continue;
+          const adjTile = this.board[adj.tileId];
+          if (adjTile.type === TileType.NORMAL && adjTile.owner === null && player.gp >= adjTile.baseValue) {
+            adjTile.owner = player.id;
+            adjTile.level = 1;
+            addGP(player, -adjTile.baseValue);
+            updateTileValue(this.board, adjTile.id);
+            updateAllTolls(this.board);
+            this.log(`Captain Justice achete la case ${adjTile.id} pour ${player.name} !`, 'important');
+            break;
+          }
+        }
+      }
+
+      player.justiceTurns--;
+      if (player.justiceTurns === 0) {
+        this.captainJusticeActive = false;
+        this.log(`Captain Justice quitte ${player.name}.`);
+      }
     }
-    if (player.hasDark) {
-      addGP(player, -75);
-      this.log(`Captain Dark vole 75 GP a ${player.name} !`, 'negative');
+
+    // Captain Dark : vole des GP et peut acheter une case chere avec les GP du joueur
+    if (player.darkTurns > 0) {
+      addGP(player, -100);
+      this.log(`Captain Dark vole 100 GP a ${player.name} !`, 'negative');
+
+      // 25% de chance d'acheter la case la plus chere disponible avec les GP du joueur
+      if (Math.random() < 0.25) {
+        const expensiveFree = this.board
+          .filter(t => t.type === TileType.NORMAL && t.owner === null && player.gp >= t.baseValue)
+          .sort((a, b) => b.baseValue - a.baseValue);
+        if (expensiveFree.length > 0) {
+          const t = expensiveFree[0];
+          t.owner = player.id;
+          t.level = 1;
+          addGP(player, -t.baseValue);
+          updateTileValue(this.board, t.id);
+          updateAllTolls(this.board);
+          this.log(`Captain Dark force l'achat de la case ${t.id} (${t.baseValue} GP) !`, 'negative');
+        }
+      }
+
+      player.darkTurns--;
+      if (player.darkTurns === 0) {
+        this.captainDarkActive = false;
+        this.log(`Captain Dark quitte ${player.name}.`);
+      }
+    }
+
+    // Gigawatt Jolt : vol de GP aux adversaires
+    if (this.sparkyEffect && this.sparkyEffect.playerId === player.id) {
+      const stolen = 50;
+      for (const other of this.players) {
+        if (other.id !== player.id) {
+          const actual = Math.min(other.gp, stolen);
+          addGP(other, -actual);
+          addGP(player, actual);
+        }
+      }
+      this.log(`Sparky vole des GP aux adversaires pour ${player.name} !`, 'important');
+      this.sparkyEffect.turnsLeft--;
+      if (this.sparkyEffect.turnsLeft <= 0) {
+        this.sparkyEffect = null;
+        this.log(`L'effet de Sparky se dissipe.`);
+      }
     }
   }
 
@@ -1162,7 +1443,7 @@ export class GameManager {
 
   render() {
     if (this.renderer) {
-      this.renderer.render(this.boardData, this.players, this.currentPlayer?.id, this.animState, this.prizeCubes);
+      this.renderer.render(this.boardData, this.players, this.currentPlayer?.id, this.animState, this.prizeCubes, this.honeyPots);
     }
   }
 
