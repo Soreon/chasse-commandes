@@ -390,23 +390,25 @@ body {
 /* Dice overlay */
 #dice-overlay {
   pointer-events: none;
-  background: transparent;
+  background: rgba(10, 14, 26, 0.6);
+  z-index: 200;
 }
 .dice-display {
   display: flex;
   gap: 16px;
 }
 .dice {
-  width: 60px;
-  height: 60px;
+  width: 70px;
+  height: 70px;
   background: white;
   color: var(--bg-dark);
-  font-size: 2rem;
+  font-size: 2.2rem;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.3);
   animation: diceRoll 0.5s ease-out;
 }
 @keyframes diceRoll {
