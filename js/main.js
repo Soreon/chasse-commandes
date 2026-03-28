@@ -1,9 +1,9 @@
 // Point d'entree principal - connecte le GameManager a l'UI
 
 import { GameManager } from './gameManager.js';
-import { CardType } from './cards.js';
+import { CardType, getAvailableHands, canPlaceOnTile } from './cards.js';
 import { getBuyoutCost, getUpgradeCost, parseBoardJSON } from './board.js';
-import { calculateNetWorth } from './player.js';
+import { calculateNetWorth, transferGP, addGP } from './player.js';
 
 const game = new GameManager();
 
@@ -48,13 +48,13 @@ document.getElementById('btn-play').addEventListener('click', () => {
   const gpGoal = parseInt(document.getElementById('gp-goal').value);
   const boardName = document.getElementById('board-select').value;
 
-  const gridData = boardsData[boardName];
-  if (!gridData) {
+  const boardEntry = boardsData[boardName];
+  if (!boardEntry) {
     alert('Plateau introuvable !');
     return;
   }
 
-  const boardData = parseBoardJSON(gridData);
+  const boardData = parseBoardJSON(boardEntry);
   const spectator = document.getElementById('spectator-mode').checked;
 
   showScreen('game-screen');
@@ -77,13 +77,19 @@ document.getElementById('btn-play').addEventListener('click', () => {
   game.init(playerName, opponentCount, gpGoal, boardData, spectator);
 });
 
-// === Selection de cartes dans la main ===
-let selectedCards = [];
+// === Noms des types de cartes ===
+const CARD_TYPE_LABELS = {
+  [CardType.ATTACK]: 'Attaque',
+  [CardType.MAGIC]: 'Magie',
+  [CardType.MISC]: 'Divers',
+  [CardType.JOKER]: 'Joker',
+};
+
+// === Affichage de la main ===
 
 function renderHand(player) {
   const container = document.getElementById('hand-cards');
   container.innerHTML = '';
-  selectedCards = [];
 
   for (const card of player.hand) {
     const el = document.createElement('div');
@@ -92,38 +98,11 @@ function renderHand(player) {
     el.innerHTML = `
       <div class="card-name">${card.name}</div>
       <div class="card-value">${card.value}</div>
-      <div class="card-type">${card.type === CardType.MAGIC ? 'Magie' : card.type === CardType.DEFENSE ? 'Defense' : 'Attaque'}</div>
+      <div class="card-type">${CARD_TYPE_LABELS[card.type] || card.type}</div>
     `;
     el.title = card.description;
-
-    el.addEventListener('click', () => {
-      if (game.phase === 'roll') {
-        // Selection pour sacrifice (des supplementaires)
-        if (card.type !== CardType.MAGIC) {
-          el.classList.toggle('selected');
-          if (el.classList.contains('selected')) {
-            selectedCards.push(card.instanceId);
-          } else {
-            selectedCards = selectedCards.filter(id => id !== card.instanceId);
-          }
-          updateRollButtons();
-        }
-      }
-    });
-
     container.appendChild(el);
   }
-}
-
-function updateRollButtons() {
-  const btn2 = document.getElementById('btn-roll2');
-  const btn3 = document.getElementById('btn-roll3');
-  btn2.disabled = selectedCards.length < 1;
-  btn3.disabled = selectedCards.length < 2;
-
-  document.getElementById('btn-roll').textContent =
-    selectedCards.length === 0 ? 'Lancer (1 de)' :
-    `Lancer (${1 + selectedCards.length} des)`;
 }
 
 // === Boutons d'action ===
@@ -131,36 +110,22 @@ function updateRollButtons() {
 document.getElementById('btn-roll').addEventListener('click', () => {
   if (game.phase !== 'roll') return;
   disableActions();
-  game.roll(selectedCards);
-});
-
-document.getElementById('btn-roll2').addEventListener('click', () => {
-  if (game.phase !== 'roll' || selectedCards.length < 1) return;
-  disableActions();
-  game.roll(selectedCards.slice(0, 1));
-});
-
-document.getElementById('btn-roll3').addEventListener('click', () => {
-  if (game.phase !== 'roll' || selectedCards.length < 2) return;
-  disableActions();
-  game.roll(selectedCards.slice(0, 2));
+  game.roll();
 });
 
 document.getElementById('btn-use-magic').addEventListener('click', () => {
-  if (game.phase !== 'magic') return;
-  showMagicSelection();
+  if (game.phase !== 'hand') return;
+  showHandSelection();
 });
 
 document.getElementById('btn-end-turn').addEventListener('click', () => {
-  if (game.phase === 'magic') {
-    game.skipMagic();
+  if (game.phase === 'hand') {
+    game.skipHand();
   }
 });
 
 function disableActions() {
   document.getElementById('btn-roll').disabled = true;
-  document.getElementById('btn-roll2').disabled = true;
-  document.getElementById('btn-roll3').disabled = true;
   document.getElementById('btn-use-magic').disabled = true;
   document.getElementById('btn-end-turn').disabled = true;
 }
@@ -172,19 +137,17 @@ function enableActions() {
     return;
   }
 
-  const hasMagic = player.hand.some(c => c.type === CardType.MAGIC);
-
-  if (game.phase === 'magic') {
+  if (game.phase === 'hand') {
+    const hasHands = getAvailableHands(player.hand).length > 0;
     document.getElementById('btn-roll').disabled = true;
-    document.getElementById('btn-roll2').disabled = true;
-    document.getElementById('btn-roll3').disabled = true;
-    document.getElementById('btn-use-magic').disabled = !hasMagic;
+    document.getElementById('btn-use-magic').disabled = !hasHands;
+    document.getElementById('btn-use-magic').textContent = 'Jouer une Main';
     document.getElementById('btn-end-turn').disabled = false;
-    document.getElementById('btn-end-turn').textContent = 'Passer la magie';
+    document.getElementById('btn-end-turn').textContent = 'Passer';
   } else if (game.phase === 'roll') {
     document.getElementById('btn-roll').disabled = false;
-    document.getElementById('btn-roll2').disabled = true;
-    document.getElementById('btn-roll3').disabled = true;
+    document.getElementById('btn-roll').textContent = game.activeHandEffect === 'two_dice' ? 'Lancer (2 des)' :
+      game.activeHandEffect === 'three_dice' ? 'Lancer (3 des)' : 'Lancer (1 de)';
     document.getElementById('btn-use-magic').disabled = true;
     document.getElementById('btn-end-turn').disabled = true;
     document.getElementById('btn-end-turn').textContent = 'Fin de tour';
@@ -233,7 +196,7 @@ function updateHUD(gm) {
   if (human) {
     for (const color of ['red', 'blue', 'yellow', 'green']) {
       const el = document.getElementById(`cp-${color}`);
-      el.classList.toggle('active', human.checkpoints[color]);
+      if (el) el.classList.toggle('active', human.checkpoints[color]);
     }
   }
 
@@ -263,10 +226,11 @@ function showOverlay(type, tile, player, board, callback) {
   const content = document.getElementById('tile-action-content');
 
   if (type === 'buy') {
-    const nonMagicCards = player.hand.filter(c => c.type !== CardType.MAGIC);
+    const placeableCards = player.hand.filter(c => canPlaceOnTile(c));
     content.innerHTML = `
       <h3>Acheter cette case ?</h3>
       <p>Cout : <span class="gp-amount">${tile.baseValue} GP</span></p>
+      ${tile.zone ? `<p>Zone : ${tile.zone}</p>` : ''}
       <p>Choisissez une carte a placer :</p>
       <div id="buy-cards" style="display:flex;gap:8px;justify-content:center;margin:10px 0;flex-wrap:wrap"></div>
       <div>
@@ -279,7 +243,7 @@ function showOverlay(type, tile, player, board, callback) {
     let selectedBuyCard = null;
     const cardsContainer = content.querySelector('#buy-cards');
 
-    for (const card of nonMagicCards) {
+    for (const card of placeableCards) {
       const el = document.createElement('div');
       el.className = `card type-${card.type}`;
       el.style.width = '60px';
@@ -331,7 +295,8 @@ function showOverlay(type, tile, player, board, callback) {
 
   } else if (type === 'toll') {
     const owner = game.players.find(p => p.id === tile.owner);
-    const tollAmount = tile.tollValue;
+    let tollAmount = tile.tollValue;
+    if (owner.doubleTollTurns > 0) tollAmount *= 2;
     const buyoutCost = getBuyoutCost(tile);
     const canBuyout = player.gp >= buyoutCost;
 
@@ -339,6 +304,7 @@ function showOverlay(type, tile, player, board, callback) {
       <h3>Peage !</h3>
       <p>Case de <strong style="color:${owner.color}">${owner.name}</strong> (Nv.${tile.level})</p>
       <p>Peage : <span class="gp-amount">${tollAmount} GP</span></p>
+      ${player.gpProtector > 0 ? '<p style="color:#50e890">Protecteur GP actif !</p>' : ''}
       <div>
         <button class="overlay-btn danger" id="btn-pay-toll">Payer le peage</button>
         ${canBuyout ? `<button class="overlay-btn confirm" id="btn-buyout">Racheter (${buyoutCost} GP)</button>` : ''}
@@ -348,8 +314,13 @@ function showOverlay(type, tile, player, board, callback) {
 
     content.querySelector('#btn-pay-toll').addEventListener('click', () => {
       overlay.classList.add('hidden');
-      const actual = transferGP(player, owner, tollAmount);
-      game.log(`${player.name} paye ${actual} GP de peage a ${owner.name}.`, 'negative');
+      if (player.gpProtector > 0) {
+        player.gpProtector--;
+        game.log(`Protecteur GP actif ! Peage bloque.`, 'important');
+      } else {
+        const actual = transferGP(player, owner, tollAmount);
+        game.log(`${player.name} paye ${actual} GP de peage a ${owner.name}.`, 'negative');
+      }
       game.endTurn();
     });
 
@@ -360,6 +331,32 @@ function showOverlay(type, tile, player, board, callback) {
         game.endTurn();
       });
     }
+
+  } else if (type === 'bonus') {
+    // Nouveau comportement : acheter une commande predeterminee
+    content.innerHTML = `
+      <h3>Case Bonus !</h3>
+      <p>Commande disponible : <strong>${tile.bonusCard.name}</strong> (${CARD_TYPE_LABELS[tile.bonusCard.type]})</p>
+      <p>Cout : <span class="gp-amount">${tile.bonusCost} GP</span></p>
+      <div>
+        <button class="overlay-btn confirm" id="btn-buy-bonus">Acheter</button>
+        <button class="overlay-btn" id="btn-skip-bonus">Passer</button>
+      </div>
+    `;
+    overlay.classList.remove('hidden');
+
+    content.querySelector('#btn-buy-bonus').addEventListener('click', () => {
+      overlay.classList.add('hidden');
+      addGP(player, -tile.bonusCost);
+      player.hand.push(tile.bonusCard);
+      if (player.hand.length > 5) player.hand.pop();
+      game.log(`${player.name} achete ${tile.bonusCard.name} pour ${tile.bonusCost} GP !`, 'important');
+      game.endTurn();
+    });
+    content.querySelector('#btn-skip-bonus').addEventListener('click', () => {
+      overlay.classList.add('hidden');
+      game.endTurn();
+    });
 
   } else if (type === 'event') {
     content.innerHTML = `
@@ -373,6 +370,79 @@ function showOverlay(type, tile, player, board, callback) {
       if (callback) callback();
     });
   }
+}
+
+// === Selection de main de cartes ===
+
+function showHandSelection() {
+  const overlay = document.getElementById('magic-overlay');
+  const content = document.getElementById('magic-content');
+  const player = game.currentPlayer;
+  const availableHands = getAvailableHands(player.hand);
+
+  content.innerHTML = `<h3>Choisir une Main</h3>`;
+
+  const handsDiv = document.createElement('div');
+  handsDiv.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin:10px 0;max-height:300px;overflow-y:auto';
+
+  for (const handDef of availableHands) {
+    const el = document.createElement('button');
+    el.className = 'overlay-btn';
+    el.style.cssText = 'text-align:left;padding:8px 12px';
+
+    const reqText = handDef.requiredCards
+      .map(r => `${r.count}x ${CARD_TYPE_LABELS[r.type]}`)
+      .join(' + ');
+
+    el.innerHTML = `<strong>${handDef.name}</strong> <small>(${reqText})</small><br><small>${handDef.description}</small>`;
+
+    el.addEventListener('click', () => {
+      if (handDef.needsTarget) {
+        showHandTargetSelection(handDef);
+      } else {
+        overlay.classList.add('hidden');
+        game.playHand(handDef.type, undefined);
+      }
+    });
+    handsDiv.appendChild(el);
+  }
+  content.appendChild(handsDiv);
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'overlay-btn';
+  cancelBtn.textContent = 'Annuler';
+  cancelBtn.addEventListener('click', () => overlay.classList.add('hidden'));
+  content.appendChild(cancelBtn);
+
+  overlay.classList.remove('hidden');
+}
+
+function showHandTargetSelection(handDef) {
+  const overlay = document.getElementById('magic-overlay');
+  const content = document.getElementById('magic-content');
+  const player = game.currentPlayer;
+
+  content.innerHTML = `<h3>Cible pour ${handDef.name}</h3>`;
+
+  for (const target of game.players) {
+    if (target.id === player.id) continue;
+    const btn = document.createElement('button');
+    btn.className = 'overlay-btn';
+    btn.style.borderColor = target.color;
+    btn.style.color = target.color;
+    btn.textContent = target.name;
+    btn.addEventListener('click', () => {
+      overlay.classList.add('hidden');
+      game.playHand(handDef.type, target.id);
+    });
+    content.appendChild(btn);
+  }
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'overlay-btn';
+  cancelBtn.textContent = 'Annuler';
+  cancelBtn.addEventListener('click', () => overlay.classList.add('hidden'));
+  content.appendChild(cancelBtn);
 }
 
 // === Choix de direction ===
@@ -417,79 +487,6 @@ function showDirectionChoice(moves, callback) {
   overlay.classList.remove('hidden');
 }
 
-// === Selection de magie ===
-
-function showMagicSelection() {
-  const overlay = document.getElementById('magic-overlay');
-  const content = document.getElementById('magic-content');
-  const player = game.currentPlayer;
-  const magicCards = player.hand.filter(c => c.type === CardType.MAGIC);
-
-  content.innerHTML = `<h3>Choisir une carte Magie</h3>`;
-
-  const cardsDiv = document.createElement('div');
-  cardsDiv.style.cssText = 'display:flex;gap:8px;justify-content:center;margin:10px 0;flex-wrap:wrap';
-
-  for (const card of magicCards) {
-    const el = document.createElement('div');
-    el.className = 'card type-magic';
-    el.style.width = '70px';
-    el.style.height = '90px';
-    el.innerHTML = `
-      <div class="card-name">${card.name}</div>
-      <div class="card-value">${card.value}</div>
-      <div class="card-type">${card.description}</div>
-    `;
-    el.addEventListener('click', () => {
-      // Si besoin de cible
-      if (['stun', 'magnet', 'damage', 'freeze', 'confuse'].includes(card.magicEffect)) {
-        showTargetSelection(card);
-      } else {
-        overlay.classList.add('hidden');
-        game.playMagic(card.instanceId, null);
-      }
-    });
-    cardsDiv.appendChild(el);
-  }
-  content.appendChild(cardsDiv);
-
-  const cancelBtn = document.createElement('button');
-  cancelBtn.className = 'overlay-btn';
-  cancelBtn.textContent = 'Annuler';
-  cancelBtn.addEventListener('click', () => overlay.classList.add('hidden'));
-  content.appendChild(cancelBtn);
-
-  overlay.classList.remove('hidden');
-}
-
-function showTargetSelection(card) {
-  const overlay = document.getElementById('magic-overlay');
-  const content = document.getElementById('magic-content');
-  const player = game.currentPlayer;
-
-  content.innerHTML = `<h3>Cible pour ${card.name}</h3>`;
-
-  for (const target of game.players) {
-    if (target.id === player.id) continue;
-    const btn = document.createElement('button');
-    btn.className = 'overlay-btn';
-    btn.style.borderColor = target.color;
-    btn.style.color = target.color;
-    btn.textContent = target.name;
-    btn.addEventListener('click', () => {
-      overlay.classList.add('hidden');
-      game.playMagic(card.instanceId, target.id);
-    });
-    content.appendChild(btn);
-  }
-
-  const cancelBtn = document.createElement('button');
-  cancelBtn.className = 'overlay-btn';
-  cancelBtn.textContent = 'Annuler';
-  cancelBtn.addEventListener('click', () => overlay.classList.add('hidden'));
-  content.appendChild(cancelBtn);
-}
-
 // === Victoire ===
 
 function showVictory(winner, scores) {
@@ -510,6 +507,3 @@ function showVictory(winner, scores) {
 
   showScreen('victory-screen');
 }
-
-// Import necessaire pour le transfert de GP dans l'overlay
-import { transferGP } from './player.js';

@@ -91,11 +91,9 @@
         <div id="hand-cards"></div>
       </div>
       <div id="action-panel">
+        <button id="btn-use-magic" class="action-btn magic-btn" disabled>Jouer une Main</button>
         <button id="btn-roll" class="action-btn">Lancer (1 de)</button>
-        <button id="btn-roll2" class="action-btn" disabled>Lancer x2</button>
-        <button id="btn-roll3" class="action-btn" disabled>Lancer x3</button>
-        <button id="btn-use-magic" class="action-btn magic-btn" disabled>Magie</button>
-        <button id="btn-end-turn" class="action-btn" disabled>Fin de tour</button>
+        <button id="btn-end-turn" class="action-btn" disabled>Passer</button>
       </div>
     </div>
 
@@ -147,23 +145,31 @@
       <h2>Regles du Command Board</h2>
       <div class="rules-text">
         <h3>Objectif</h3>
-        <p>Atteignez l'objectif de GP (Valeur Nette) et revenez sur la case Depart pour gagner !</p>
+        <p>Atteignez l'objectif de GP totaux (GP courants + valeur des cases) et revenez sur la case Depart pour gagner !</p>
         <h3>Tour de jeu</h3>
-        <p>1. Jouez une carte magie (optionnel)</p>
-        <p>2. Choisissez 1 a 3 cartes pour lancer les des</p>
-        <p>3. Deplacez-vous et resolvez la case d'arrivee</p>
+        <p>1. Jouez une main de cartes (optionnel) - combinez vos cartes pour un effet special</p>
+        <p>2. Lancez le de et deplacez-vous</p>
+        <p>3. Resolvez la case d'arrivee</p>
+        <h3>Mains de cartes</h3>
+        <p><strong>Stun (1 Attaque) :</strong> Un adversaire passe son tour.</p>
+        <p><strong>Double De (1 Magie) :</strong> Lance 2 des (2-12 cases).</p>
+        <p><strong>Protecteur GP (1 Divers) :</strong> Bloque la prochaine perte de GP.</p>
+        <p><strong>Navigateur (2 Attaque) :</strong> Deplacez-vous dans toutes les directions.</p>
+        <p><strong>Triple De (2 Magie) :</strong> Lance 3 des (3-18 cases).</p>
+        <p><strong>Confusion (2 Divers) :</strong> Adversaires confus 3 tours.</p>
+        <p><strong>Double Peage (3 Attaque) :</strong> Vos peages x2 pendant 5 tours.</p>
+        <p><strong>Aimant GP (1A+1M+1D) :</strong> Gagne GP selon les cases adverses.</p>
+        <p><strong>Fortune du Joker (1 Joker) :</strong> Effet aleatoire ou capture de case.</p>
+        <p><strong>Chance Doree (3 Joker) :</strong> Effet aleatoire ou capture de zone !</p>
         <h3>Cases</h3>
-        <p><strong>Depart :</strong> Restaure la main, bonus GP si checkpoints actives.</p>
-        <p><strong>Standard :</strong> Achetez-la en placant une carte et en payant des GP.</p>
-        <p><strong>Checkpoint :</strong> 4 couleurs a activer pour le bonus de tour.</p>
-        <p><strong>Evenement :</strong> Effets aleatoires (bonus, degats, joker...).</p>
-        <h3>Peage</h3>
-        <p>Atterrir sur la case d'un adversaire vous fait payer un peage.</p>
-        <p>Vous pouvez aussi racheter la case de force (5x sa valeur).</p>
-        <h3>Cartes Magie</h3>
-        <p><strong>Foudre :</strong> Etourdit un adversaire (passe son tour).</p>
-        <p><strong>Aimant :</strong> Attire un adversaire sur votre case.</p>
-        <p><strong>Soin :</strong> Recuperez des GP.</p>
+        <p><strong>Depart :</strong> Bonus GP. Restaure la main apres les 4 checkpoints.</p>
+        <p><strong>Commande :</strong> Achetez en placant une carte. Groupees en zones.</p>
+        <p><strong>Checkpoint :</strong> +300 GP, +1 carte. 4 a activer pour le bonus de tour.</p>
+        <p><strong>Bonus :</strong> Achetez une commande predeterminee.</p>
+        <p><strong>Booster :</strong> Accumule un % en passant, active en s'arretant.</p>
+        <h3>Zones et Monopoles</h3>
+        <p>Posseder plusieurs cases d'une meme zone augmente leur valeur.</p>
+        <p>Posseder TOUTE une zone donne un bonus d'exclusivite massif !</p>
       </div>
       <button id="btn-back-rules" class="menu-btn">Retour</button>
     </div>

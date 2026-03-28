@@ -1,7 +1,7 @@
 // Gestionnaire principal du jeu - orchestre la boucle de jeu
 
-import { TileType, updateTileValue, updateAllTolls, getBuyoutCost, getUpgradeCost, isCheckpoint, getCheckpointColor, getAvailableMoves, CHECKPOINT_BONUS_GP, LAP_BONUS_GP, START_PASS_BONUS, START_STOP_BONUS, BASE_TILE_COST } from './board.js';
-import { rollDie, CardType, createCard, drawRandomCards } from './cards.js';
+import { TileType, updateTileValue, updateAllTolls, getBuyoutCost, getUpgradeCost, isCheckpoint, getCheckpointColor, getAvailableMoves, CHECKPOINT_BONUS_GP, LAP_BONUS_GP, START_PASS_BONUS, START_STOP_BONUS, BASE_TILE_COST, countOwnedInZone, countTilesInZone, OPPOSITE_DIR } from './board.js';
+import { rollDie, CardType, createCard, drawRandomCards, HandType, HAND_DEFINITIONS, getAvailableHands, selectCardsForHand, canPlaceOnTile } from './cards.js';
 import { createPlayer, calculateNetWorth, addGP, transferGP, refillHand, removeCardFromHand, allCheckpointsVisited, resetCheckpoints, PLAYER_COLORS, AI_NAMES } from './player.js';
 import { Renderer } from './renderer.js';
 import { AI } from './ai.js';
@@ -15,9 +15,12 @@ export class GameManager {
     this.currentPlayerIndex = 0;
     this.turnNumber = 1;
     this.gpGoal = 7500;
-    this.phase = 'idle'; // idle | magic | roll | moving | tileAction | gameOver
+    this.phase = 'idle'; // idle | hand | roll | moving | tileAction | gameOver
     this.renderer = null;
     this.animState = null;
+
+    // Etat de la main jouee ce tour
+    this.activeHandEffect = null; // HandType actif pour ce tour (Two Dice, Navigator, etc.)
 
     // Callbacks UI
     this.onUpdate = null;
@@ -60,7 +63,7 @@ export class GameManager {
 
     this.currentPlayerIndex = 0;
     this.turnNumber = 1;
-    this.phase = 'magic';
+    this.phase = 'hand';
 
     // Renderer
     const canvas = document.getElementById('board-canvas');
@@ -83,101 +86,215 @@ export class GameManager {
     return this.players[this.currentPlayerIndex];
   }
 
-  // === PHASE 1 : MAGIE ===
+  // === PHASE 1 : MAIN DE CARTES ===
 
-  // Le joueur humain joue une carte magie
-  playMagic(cardInstanceId, targetPlayerId) {
+  // Le joueur humain joue une main de cartes
+  playHand(handType, targetPlayerId) {
     const player = this.currentPlayer;
-    const card = player.hand.find(c => c.instanceId === cardInstanceId);
-    if (!card || card.type !== CardType.MAGIC) return;
+    const handDef = HAND_DEFINITIONS.find(h => h.type === handType);
+    if (!handDef) return;
 
-    this.resolveMagicEffect(player, card, targetPlayerId);
-    removeCardFromHand(player, cardInstanceId);
+    // Selectionner et consommer les cartes
+    const consumed = selectCardsForHand(player.hand, handDef);
+    if (!consumed) return;
+
+    for (const card of consumed) {
+      removeCardFromHand(player, card.instanceId);
+    }
+
+    // Appliquer l'effet de la main
+    this.resolveHandEffect(player, handDef, targetPlayerId);
+
     this.phase = 'roll';
     this.updateUI();
   }
 
-  // Passe la phase magie
-  skipMagic() {
+  // Passe la phase main
+  skipHand() {
+    this.activeHandEffect = null;
     this.phase = 'roll';
     this.updateUI();
   }
 
-  resolveMagicEffect(caster, card, targetId) {
-    const target = this.players.find(p => p.id === targetId);
+  resolveHandEffect(player, handDef, targetId) {
+    const target = targetId !== undefined ? this.players.find(p => p.id === targetId) : null;
 
-    switch (card.magicEffect) {
-      case 'stun':
+    switch (handDef.type) {
+      case HandType.STUN:
         if (target) {
           target.stunned = true;
-          this.log(`${caster.name} lance ${card.name} sur ${target.name} ! Tour passe.`, 'important');
+          this.log(`${player.name} joue Stun sur ${target.name} ! Tour passe.`, 'important');
         }
         break;
-      case 'magnet':
-        if (target) {
-          target.position = caster.position;
-          this.log(`${caster.name} utilise Aimant ! ${target.name} est attire.`, 'important');
+
+      case HandType.TWO_DICE:
+        this.activeHandEffect = HandType.TWO_DICE;
+        this.log(`${player.name} joue Double De ! 2 des ce tour.`, 'important');
+        break;
+
+      case HandType.THREE_DICE:
+        this.activeHandEffect = HandType.THREE_DICE;
+        this.log(`${player.name} joue Triple De ! 3 des ce tour.`, 'important');
+        break;
+
+      case HandType.GP_PROTECTOR:
+        player.gpProtector = (player.gpProtector || 0) + 1;
+        this.log(`${player.name} joue Protecteur GP ! Prochaine perte bloquee.`, 'important');
+        break;
+
+      case HandType.NAVIGATOR:
+        this.activeHandEffect = HandType.NAVIGATOR;
+        this.log(`${player.name} joue Navigateur ! Peut aller dans toutes les directions.`, 'important');
+        break;
+
+      case HandType.CONFUSE:
+        for (const p of this.players) {
+          if (p.id !== player.id) {
+            p.confusedTurns = 3;
+          }
         }
+        this.log(`${player.name} joue Confusion ! Adversaires confus pour 3 tours.`, 'important');
         break;
-      case 'heal':
-        addGP(caster, card.gpEffect);
-        this.log(`${caster.name} utilise Soin ! +${card.gpEffect} GP.`);
+
+      case HandType.DOUBLE_TOLL:
+        player.doubleTollTurns = 5;
+        this.log(`${player.name} joue Double Peage ! Peages x2 pendant 5 tours.`, 'important');
         break;
-      case 'damage':
-        if (target) {
-          addGP(target, card.gpEffect); // negatif
-          this.log(`${caster.name} lance ${card.name} sur ${target.name} ! ${card.gpEffect} GP.`, 'negative');
+
+      case HandType.GP_MAGNET: {
+        let totalEnemyTiles = 0;
+        for (const p of this.players) {
+          if (p.id !== player.id) {
+            totalEnemyTiles += this.board.filter(t => t.owner === p.id).length;
+          }
         }
+        const gpGain = totalEnemyTiles * 100;
+        addGP(player, gpGain);
+        this.log(`${player.name} joue Aimant GP ! +${gpGain} GP (${totalEnemyTiles} cases adverses).`, 'important');
         break;
-      case 'freeze':
-        if (target) {
-          target.frozen = true;
-          this.log(`${caster.name} gele ${target.name} ! De limite a 1-3.`, 'important');
-        }
+      }
+
+      case HandType.JOKERS_FORTUNE:
+        this.resolveJokersFortune(player);
         break;
-      case 'confuse':
-        if (target) {
-          target.confused = true;
-          this.log(`${caster.name} confond ${target.name} !`, 'important');
-        }
-        break;
-      case 'scramble':
-        this.scramblePositions();
-        this.log(`${caster.name} utilise Zero Gravite ! Positions melangees !`, 'important');
+
+      case HandType.GOLDEN_CHANCE:
+        this.resolveGoldenChance(player);
         break;
     }
+
     this.render();
   }
 
-  scramblePositions() {
-    const positions = this.players.map(p => p.position);
-    // Shuffle
-    for (let i = positions.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [positions[i], positions[j]] = [positions[j], positions[i]];
-    }
-    this.players.forEach((p, i) => { p.position = positions[i]; });
+  resolveJokersFortune(player) {
+    const effects = [
+      () => {
+        // Stun aleatoire
+        const targets = this.players.filter(p => p.id !== player.id);
+        if (targets.length > 0) {
+          const t = targets[Math.floor(Math.random() * targets.length)];
+          t.stunned = true;
+          this.log(`Fortune du Joker : Stun ! ${t.name} passe son tour.`, 'important');
+        }
+      },
+      () => {
+        // Two Dice
+        this.activeHandEffect = HandType.TWO_DICE;
+        this.log(`Fortune du Joker : Double De !`, 'important');
+      },
+      () => {
+        // GP Protector
+        player.gpProtector = (player.gpProtector || 0) + 1;
+        this.log(`Fortune du Joker : Protecteur GP !`, 'important');
+      },
+      () => {
+        // GP Magnet
+        let totalEnemyTiles = 0;
+        for (const p of this.players) {
+          if (p.id !== player.id) totalEnemyTiles += this.board.filter(t => t.owner === p.id).length;
+        }
+        addGP(player, totalEnemyTiles * 100);
+        this.log(`Fortune du Joker : Aimant GP ! +${totalEnemyTiles * 100} GP.`, 'important');
+      },
+      () => {
+        // Panel Capture - capturer une case aleatoire
+        const unowned = this.board.filter(t => t.type === TileType.NORMAL && t.owner === null);
+        if (unowned.length > 0) {
+          const target = unowned[Math.floor(Math.random() * unowned.length)];
+          target.owner = player.id;
+          target.level = 1;
+          target.cardPlaced = null;
+          updateTileValue(this.board, target.id);
+          updateAllTolls(this.board);
+          this.log(`Fortune du Joker : Capture de case ! Case ${target.id} capturee !`, 'important');
+        } else {
+          addGP(player, 500);
+          this.log(`Fortune du Joker : Bonus ! +500 GP.`, 'important');
+        }
+      },
+    ];
+    effects[Math.floor(Math.random() * effects.length)]();
+  }
+
+  resolveGoldenChance(player) {
+    const effects = [
+      () => {
+        // Zone Capture - capturer une zone entiere
+        const zones = this.boardData.zones || [];
+        const capturableZones = zones.filter(z => {
+          const zoneTiles = this.board.filter(t => t.zone === z.id && t.type === TileType.NORMAL);
+          return zoneTiles.some(t => t.owner !== player.id);
+        });
+        if (capturableZones.length > 0) {
+          const zone = capturableZones[Math.floor(Math.random() * capturableZones.length)];
+          const zoneTiles = this.board.filter(t => t.zone === zone.id && t.type === TileType.NORMAL);
+          for (const t of zoneTiles) {
+            t.owner = player.id;
+            if (t.level === 0) t.level = 1;
+            if (!t.cardPlaced) t.cardPlaced = null;
+          }
+          updateAllTolls(this.board);
+          this.log(`Chance Doree : Capture de zone ! Zone ${zone.name} capturee !`, 'important');
+        } else {
+          addGP(player, 2000);
+          this.log(`Chance Doree : Jackpot ! +2000 GP !`, 'important');
+        }
+      },
+      () => {
+        this.activeHandEffect = HandType.THREE_DICE;
+        this.log(`Chance Doree : Triple De !`, 'important');
+      },
+      () => {
+        player.doubleTollTurns = 5;
+        this.log(`Chance Doree : Double Peage pour 5 tours !`, 'important');
+      },
+      () => {
+        for (const p of this.players) {
+          if (p.id !== player.id) p.confusedTurns = 3;
+        }
+        this.log(`Chance Doree : Confusion generale ! 3 tours.`, 'important');
+      },
+    ];
+    effects[Math.floor(Math.random() * effects.length)]();
   }
 
   // === PHASE 2 : LANCER DE DES ===
 
-  // Le joueur choisit combien de des lancer (et sacrifie des cartes)
-  async roll(sacrificedCardIds = []) {
+  async roll() {
     const player = this.currentPlayer;
 
-    // Retirer les cartes sacrifiees
-    for (const id of sacrificedCardIds) {
-      removeCardFromHand(player, id);
-    }
+    // Nombre de des determine par la main jouee
+    let diceCount = 1;
+    if (this.activeHandEffect === HandType.TWO_DICE) diceCount = 2;
+    if (this.activeHandEffect === HandType.THREE_DICE) diceCount = 3;
 
-    const diceCount = 1 + sacrificedCardIds.length;
     let total = 0;
     const rolls = [];
 
     for (let i = 0; i < diceCount; i++) {
       let val = rollDie();
       if (player.frozen) {
-        val = Math.min(val, 3); // Gele : max 3
+        val = Math.min(val, 3);
       }
       rolls.push(val);
       total += val;
@@ -214,8 +331,10 @@ export class GameManager {
       return;
     }
 
-    // Obtenir les deplacements possibles (respecte le non-demi-tour)
-    const moves = getAvailableMoves(this.board, player.position, player.lastDirection);
+    // Obtenir les deplacements possibles
+    // Navigator permet d'ignorer la regle anti-demi-tour
+    const lastDir = this.activeHandEffect === HandType.NAVIGATOR ? null : player.lastDirection;
+    const moves = getAvailableMoves(this.board, player.position, lastDir);
 
     if (moves.length === 1) {
       await this.moveToTile(moves[0], stepsRemaining);
@@ -338,7 +457,14 @@ export class GameManager {
       if (color && !player.checkpoints[color]) {
         player.checkpoints[color] = true;
         addGP(player, CHECKPOINT_BONUS_GP);
-        this.log(`${player.name} active le checkpoint ${color} ! +${CHECKPOINT_BONUS_GP} GP`);
+        // +1 carte au passage d'un checkpoint
+        if (player.hand.length < 5) {
+          const newCards = drawRandomCards(1);
+          player.hand.push(newCards[0]);
+          this.log(`${player.name} active le checkpoint ${color} ! +${CHECKPOINT_BONUS_GP} GP +1 carte`);
+        } else {
+          this.log(`${player.name} active le checkpoint ${color} ! +${CHECKPOINT_BONUS_GP} GP`);
+        }
       }
     }
 
@@ -346,18 +472,24 @@ export class GameManager {
     if (tile.type === TileType.START) {
       this.onPassStart(player);
     }
+
+    // GP Booster (en passant) - augmente le pourcentage
+    if (tile.type === TileType.BOOSTER) {
+      player.boosterPercent = Math.min((player.boosterPercent || 1) + 3, 10);
+      this.log(`${player.name} passe par le Booster ! Multiplicateur: ${player.boosterPercent}%`);
+    }
   }
 
   onPassStart(player) {
     addGP(player, START_PASS_BONUS);
-    refillHand(player);
-    this.log(`${player.name} passe par le Depart ! +${START_PASS_BONUS} GP, main restauree.`);
+    this.log(`${player.name} passe par le Depart ! +${START_PASS_BONUS} GP.`);
 
-    // Lap bonus si tous les checkpoints sont actives
+    // Lap bonus + recharge main SEULEMENT si tous les checkpoints sont actives
     if (allCheckpointsVisited(player)) {
       addGP(player, LAP_BONUS_GP);
+      refillHand(player);
       resetCheckpoints(player);
-      this.log(`BONUS DE TOUR ! ${player.name} gagne ${LAP_BONUS_GP} GP !`, 'important');
+      this.log(`BONUS DE TOUR ! ${player.name} gagne ${LAP_BONUS_GP} GP ! Main restauree.`, 'important');
     }
   }
 
@@ -375,7 +507,13 @@ export class GameManager {
       if (color && !player.checkpoints[color]) {
         player.checkpoints[color] = true;
         addGP(player, CHECKPOINT_BONUS_GP);
-        this.log(`${player.name} active le checkpoint ${color} ! +${CHECKPOINT_BONUS_GP} GP`);
+        if (player.hand.length < 5) {
+          const newCards = drawRandomCards(1);
+          player.hand.push(newCards[0]);
+          this.log(`${player.name} active le checkpoint ${color} ! +${CHECKPOINT_BONUS_GP} GP +1 carte`);
+        } else {
+          this.log(`${player.name} active le checkpoint ${color} ! +${CHECKPOINT_BONUS_GP} GP`);
+        }
       }
     }
 
@@ -406,14 +544,12 @@ export class GameManager {
     }
     if (tile.type === TileType.DAMAGE) {
       if (player.carryingDice) {
-        // Poser le de ici - en securite
         tile.hasDice = true;
         player.carryingDice = false;
         this.log(`${player.name} est en securite sur la case de !`);
         this.render();
         this.endTurn();
       } else if (tile.hasDice) {
-        // Deja un de ici (le joueur s'arrete pile dessus)
         this.log(`${player.name} est en securite sur la case de !`);
         this.endTurn();
       } else {
@@ -439,21 +575,29 @@ export class GameManager {
   }
 
   handleStartTile(player) {
+    // Enregistrer GP avant les bonus pour la condition de victoire
+    const gpBeforeBonus = calculateNetWorth(player, this.board);
+
     addGP(player, START_STOP_BONUS);
-    refillHand(player);
-    this.log(`${player.name} s'arrete sur le Depart ! +${START_STOP_BONUS} GP, main restauree.`, 'important');
+    this.log(`${player.name} s'arrete sur le Depart ! +${START_STOP_BONUS} GP.`, 'important');
 
     if (allCheckpointsVisited(player)) {
       addGP(player, LAP_BONUS_GP);
+      refillHand(player);
       resetCheckpoints(player);
-      this.log(`BONUS DE TOUR ! +${LAP_BONUS_GP} GP !`, 'important');
+      this.log(`BONUS DE TOUR ! +${LAP_BONUS_GP} GP ! Main restauree.`, 'important');
     }
 
-    // Verifier victoire
-    const netWorth = calculateNetWorth(player, this.board);
-    if (netWorth >= this.gpGoal) {
+    // Verifier victoire : le joueur devait avoir atteint le seuil AVANT les bonus
+    // Si le seuil est atteint grace aux bonus eux-memes, il doit revenir
+    if (gpBeforeBonus >= this.gpGoal) {
       this.victory(player);
       return;
+    }
+
+    const gpAfterBonus = calculateNetWorth(player, this.board);
+    if (gpAfterBonus >= this.gpGoal) {
+      this.log(`${player.name} atteint l'objectif grace aux bonus, mais doit revenir au depart !`, 'important');
     }
 
     this.endTurn();
@@ -463,19 +607,19 @@ export class GameManager {
     const cost = tile.baseValue;
 
     if (player.isHuman) {
-      const nonMagicCards = player.hand.filter(c => c.type !== CardType.MAGIC);
-      if (player.gp >= cost && nonMagicCards.length > 0) {
+      const placeableCards = player.hand.filter(c => canPlaceOnTile(c));
+      if (player.gp >= cost && placeableCards.length > 0) {
         this.showTileAction('buy', tile, player);
       } else {
         if (player.gp < cost) this.log(`Pas assez de GP pour acheter cette case (${cost} GP).`);
-        if (nonMagicCards.length === 0) this.log(`Pas de carte a placer sur cette case.`);
+        if (placeableCards.length === 0) this.log(`Pas de carte a placer sur cette case.`);
         this.endTurn();
       }
     } else {
       // IA decide
       if (AI.shouldBuyTile(player, tile, this.board)) {
         const card = AI.chooseCardToPlace(player);
-        this.buyTile(player, tile, card);
+        if (card) this.buyTile(player, tile, card);
       }
       this.endTurn();
     }
@@ -502,18 +646,15 @@ export class GameManager {
     const owner = this.players.find(p => p.id === tile.owner);
     let tollAmount = tile.tollValue;
 
-    // Bouclier de peage
-    if (player.tollShield) {
-      tollAmount = Math.floor(tollAmount / 2);
-      player.tollShield = false;
-      this.log(`Bouclier actif ! Peage reduit de 50%.`);
+    // Double Toll actif sur le proprietaire
+    if (owner.doubleTollTurns > 0) {
+      tollAmount *= 2;
     }
 
-    // Reflet de peage
-    if (player.tollReflect) {
-      player.tollReflect = false;
-      addGP(owner, -tollAmount);
-      this.log(`Reflet actif ! ${owner.name} paye ${tollAmount} GP au lieu de ${player.name} !`, 'important');
+    // GP Protector bloque la perte
+    if (player.gpProtector > 0) {
+      player.gpProtector--;
+      this.log(`Protecteur GP actif ! Peage bloque.`, 'important');
       this.endTurn();
       return;
     }
@@ -535,13 +676,13 @@ export class GameManager {
   // Acheter une case
   buyTile(player, tile, card) {
     addGP(player, -tile.baseValue);
-    removeCardFromHand(player, card.instanceId);
+    if (card) removeCardFromHand(player, card.instanceId);
     tile.owner = player.id;
     tile.cardPlaced = card;
     tile.level = 1;
     updateTileValue(this.board, tile.id);
     updateAllTolls(this.board);
-    this.log(`${player.name} achete la case ${tile.id} pour ${tile.baseValue} GP ! (${card.name} placee)`, 'important');
+    this.log(`${player.name} achete la case ${tile.id} pour ${tile.baseValue} GP !${card ? ` (${card.name} placee)` : ''}`, 'important');
     this.render();
   }
 
@@ -571,34 +712,40 @@ export class GameManager {
   // === CASES SPECIALES ===
 
   handleBonusTile(player) {
-    const bonusType = Math.random();
-    if (bonusType < 0.5) {
-      const amount = 100 + Math.floor(Math.random() * 300);
-      addGP(player, amount);
-      this.log(`Case Bonus ! ${player.name} gagne ${amount} GP !`, 'important');
-    } else {
-      const cards = drawRandomCards(1);
-      if (player.hand.length < 5) {
-        player.hand.push(cards[0]);
-        this.log(`Case Bonus ! ${player.name} recoit la carte ${cards[0].name} !`, 'important');
-      } else {
-        const amount = 150;
-        addGP(player, amount);
-        this.log(`Case Bonus ! Main pleine, ${player.name} gagne ${amount} GP a la place.`);
-      }
-    }
+    // Case bonus : propose une commande predeterminee a acheter (sans carte de la main)
+    const bonusCost = 200 + Math.floor(Math.random() * 200);
+    const bonusCard = drawRandomCards(1)[0];
 
     if (player.isHuman) {
-      this.showEventResult(`Case Bonus !`, () => this.endTurn());
+      if (player.gp >= bonusCost) {
+        this.showTileAction('bonus', { bonusCost, bonusCard }, player);
+      } else {
+        this.log(`Case Bonus : ${bonusCard.name} disponible pour ${bonusCost} GP, mais pas assez de GP.`);
+        this.endTurn();
+      }
     } else {
+      // IA achete si elle a les moyens
+      if (player.gp >= bonusCost && player.gp > bonusCost * 1.5) {
+        addGP(player, -bonusCost);
+        player.hand.push(bonusCard);
+        if (player.hand.length > 5) player.hand.pop();
+        this.log(`${player.name} achete ${bonusCard.name} pour ${bonusCost} GP sur la case Bonus !`, 'important');
+      }
       this.endTurn();
     }
   }
 
   handleDamageTile(player) {
     const damage = 100 + Math.floor(Math.random() * 200);
-    addGP(player, -damage);
-    this.log(`Case Degats ! ${player.name} perd ${damage} GP !`, 'negative');
+
+    // GP Protector bloque les degats
+    if (player.gpProtector > 0) {
+      player.gpProtector--;
+      this.log(`Protecteur GP actif ! Degats bloques.`, 'important');
+    } else {
+      addGP(player, -damage);
+      this.log(`Case Degats ! ${player.name} perd ${damage} GP !`, 'negative');
+    }
 
     if (player.isHuman) {
       this.showEventResult(`Degats ! -${damage} GP`, () => this.endTurn());
@@ -620,13 +767,11 @@ export class GameManager {
         return 'Piege ! -300 GP';
       },
       () => {
-        // Teleporter au depart
         player.position = this.startTileId;
         this.log(`Joker ! Teleportation au depart !`, 'important');
         return 'Teleportation au depart !';
       },
       () => {
-        // Voler GP a un adversaire
         const target = this.players.find(p => p.id !== player.id && p.gp > 0);
         if (target) {
           const stolen = Math.min(200, target.gp);
@@ -637,7 +782,6 @@ export class GameManager {
         return 'Rien ne se passe...';
       },
       () => {
-        // Captain Justice apparait
         if (!this.captainJusticeActive) {
           player.hasJustice = true;
           this.captainJusticeActive = true;
@@ -648,7 +792,6 @@ export class GameManager {
         return 'Bonus ! +200 GP';
       },
       () => {
-        // Captain Dark apparait
         if (!this.captainDarkActive) {
           player.hasDark = true;
           this.captainDarkActive = true;
@@ -671,25 +814,18 @@ export class GameManager {
   }
 
   handleEventTile(player) {
-    // Evenement specifique au plateau
     const events = [
       () => {
-        // Tous les joueurs gagnent 100 GP
         this.players.forEach(p => addGP(p, 100));
         this.log(`Evenement ! Tous les joueurs gagnent 100 GP !`, 'important');
         return 'Tous les joueurs gagnent 100 GP !';
       },
       () => {
-        // Peages doubles pour 3 tours (simplifie : peages x2 maintenant)
-        this.players.forEach(p => {
-          // Doubler temporairement les valeurs des cases possedees
-        });
         addGP(player, 200);
         this.log(`Evenement ! Bonus de 200 GP !`);
         return 'Bonus evenement : +200 GP';
       },
       () => {
-        // Echange de position avec un adversaire aleatoire
         const target = this.players.find(p => p.id !== player.id);
         if (target) {
           const temp = player.position;
@@ -712,30 +848,27 @@ export class GameManager {
     }
   }
 
-  // Applique les degats d'une case damage (quand un joueur perd la protection du de)
   applyDamagePenalty(player) {
     const damage = 100 + Math.floor(Math.random() * 200);
-    addGP(player, -damage);
-    this.log(`${player.name} subit ${damage} degats sur la piste de danger !`, 'negative');
+    if (player.gpProtector > 0) {
+      player.gpProtector--;
+      this.log(`Protecteur GP bloque les degats pour ${player.name} !`, 'important');
+    } else {
+      addGP(player, -damage);
+      this.log(`${player.name} subit ${damage} degats sur la piste de danger !`, 'negative');
+    }
   }
 
   handleBoosterTile(player) {
-    // Booster : augmente toutes les cases du joueur d'un niveau
-    const ownedTiles = this.board.filter(t => t.owner === player.id && t.level > 0);
-    if (ownedTiles.length > 0) {
-      for (const t of ownedTiles) {
-        if (t.level < 5) t.level++;
-      }
-      updateAllTolls(this.board);
-      this.log(`Case Booster ! Toutes les cases de ${player.name} montent d'un niveau !`, 'important');
-    } else {
-      const amount = 200;
-      addGP(player, amount);
-      this.log(`Case Booster ! Aucune case possedee, ${player.name} gagne ${amount} GP.`);
-    }
+    // Atterrir sur le Booster : active le multiplicateur accumule, puis reset
+    const percent = player.boosterPercent || 1;
+    const bonus = Math.floor(player.gp * percent / 100);
+    addGP(player, bonus);
+    this.log(`Case Booster ! Multiplicateur ${percent}% active ! +${bonus} GP.`, 'important');
+    player.boosterPercent = 1; // Reset
 
     if (player.isHuman) {
-      this.showEventResult('Booster active !', () => this.endTurn());
+      this.showEventResult(`Booster ${percent}% : +${bonus} GP`, () => this.endTurn());
     } else {
       this.endTurn();
     }
@@ -744,7 +877,6 @@ export class GameManager {
   // === CAPTAIN JUSTICE / DARK ===
 
   checkCaptainTransfer(player) {
-    // Transfert de Captain Dark en croisant un autre joueur
     if (player.hasDark) {
       for (const other of this.players) {
         if (other.id !== player.id && other.position === player.position) {
@@ -774,8 +906,15 @@ export class GameManager {
     // Appliquer les effets Captain
     this.applyCaptainEffects(this.currentPlayer);
 
-    // Verifier victoire (le joueur doit etre sur le depart)
+    // Decrementer les compteurs temporaires
     const player = this.currentPlayer;
+    if (player.doubleTollTurns > 0) player.doubleTollTurns--;
+    if (player.confusedTurns > 0) player.confusedTurns--;
+
+    // Reset l'effet de main actif
+    this.activeHandEffect = null;
+
+    // Verifier victoire (le joueur doit etre sur le depart)
     const netWorth = calculateNetWorth(player, this.board);
     if (netWorth >= this.gpGoal && player.position === this.startTileId) {
       this.victory(player);
@@ -804,7 +943,8 @@ export class GameManager {
       return;
     }
 
-    this.phase = 'magic';
+    this.phase = 'hand';
+    this.activeHandEffect = null;
     this.log(`--- Tour de ${player.name} ---`);
     this.render();
     this.updateUI();
@@ -820,23 +960,23 @@ export class GameManager {
   async playAITurn() {
     const player = this.currentPlayer;
 
-    // Phase magie
-    const magicChoice = AI.chooseMagicCard(player, this.players);
-    if (magicChoice) {
-      const card = magicChoice.card || magicChoice;
-      const targetId = magicChoice.targetId ?? AI.chooseTarget(player, this.players)?.id;
-      if (targetId !== undefined) {
-        this.resolveMagicEffect(player, card, targetId);
-        removeCardFromHand(player, card.instanceId);
+    // Phase main : l'IA choisit une main a jouer
+    const handChoice = AI.chooseHand(player, this.players, this.board);
+    if (handChoice) {
+      const consumed = selectCardsForHand(player.hand, handChoice.handDef);
+      if (consumed) {
+        for (const card of consumed) {
+          removeCardFromHand(player, card.instanceId);
+        }
+        this.resolveHandEffect(player, handChoice.handDef, handChoice.targetId);
       }
     }
 
     await this.delay(500);
 
     // Phase lancer
-    const sacrificed = AI.chooseDiceCards(player);
     this.phase = 'roll';
-    this.roll(sacrificed);
+    this.roll();
   }
 
   delay(ms) {

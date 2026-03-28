@@ -10,7 +10,7 @@ export function createPlayer(id, name, isHuman = false, color = '#4a9eff') {
     name,
     isHuman,
     color,
-    gp: 1000,           // GP de depart
+    gp: 1000,           // GP courants (portefeuille)
     position: 0,         // ID de la case actuelle (depart)
     hand: createStartingHand(),
     checkpoints: {       // Checkpoints visites
@@ -22,18 +22,19 @@ export function createPlayer(id, name, isHuman = false, color = '#4a9eff') {
     // Etats temporaires
     stunned: false,      // Passe le prochain tour
     frozen: false,       // De force (1-3) au prochain tour
-    confused: false,     // Controles inverses
-    tollShield: false,   // Reduit le prochain peage de 50%
-    tollReflect: false,  // Renvoie le prochain peage
+    confusedTurns: 0,    // Nombre de tours restants avec directions aleatoires
+    gpProtector: 0,      // Nombre de protections GP actives (cumulable)
+    doubleTollTurns: 0,  // Nombre de tours restants avec peages doubles
     hasJustice: false,   // Captain Justice attache
     hasDark: false,      // Captain Dark attache
     carryingDice: false, // Porte une case de (damage track)
+    boosterPercent: 1,   // Pourcentage GP Booster accumule (1% initial)
     // Historique pour anti-demi-tour (direction du dernier deplacement)
     lastDirection: null,
   };
 }
 
-// Calcule la valeur nette d'un joueur
+// Calcule la valeur nette d'un joueur (GP courants + valeur des cases = GP totaux)
 export function calculateNetWorth(player, board) {
   let tileValues = 0;
   for (const tile of board) {
@@ -44,15 +45,14 @@ export function calculateNetWorth(player, board) {
   return player.gp + tileValues;
 }
 
-// Ajoute des GP a un joueur
+// Ajoute des GP a un joueur (peut devenir negatif - vente forcee geree ailleurs)
 export function addGP(player, amount) {
   player.gp += amount;
-  if (player.gp < 0) player.gp = 0;
 }
 
 // Transfere des GP entre joueurs
 export function transferGP(from, to, amount) {
-  const actual = Math.min(from.gp, amount);
+  const actual = Math.min(from.gp, Math.max(0, amount));
   from.gp -= actual;
   to.gp += actual;
   return actual;
@@ -76,7 +76,7 @@ export function removeCardFromHand(player, instanceId) {
   return null;
 }
 
-// Restaure la main a 5 cartes (quand on passe par le depart)
+// Restaure la main a 5 cartes (seulement au lap bonus)
 export function refillHand(player) {
   const needed = MAX_HAND_SIZE - player.hand.length;
   if (needed > 0) {

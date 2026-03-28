@@ -1,5 +1,5 @@
 // Systeme de plateau en grille avec liens (teleporteurs)
-// Supporte le chargement depuis boards.json
+// Supporte le chargement depuis boards.json (format { grid, zones })
 
 export const TileType = {
   START: 'start',
@@ -60,13 +60,26 @@ const DIR_OFFSETS = {
 
 // === Constantes de jeu ===
 export const BASE_TILE_COST = 100;
-export const TOLL_RATE = 0.2;
 export const BUYOUT_MULTIPLIER = 5;
-export const CHECKPOINT_BONUS_GP = 50;
+export const CHECKPOINT_BONUS_GP = 300;
 export const LAP_BONUS_GP = 500;
 export const START_PASS_BONUS = 100;
 export const START_STOP_BONUS = 200;
-export const CHAIN_BONUS_RATE = 0.25;
+
+// Taux de peage par niveau (40% LV1 -> 60% LV5)
+export const TOLL_RATES = [0, 0.40, 0.45, 0.50, 0.55, 0.60];
+
+// Multiplicateur de valeur par niveau
+export const LEVEL_MULTIPLIERS = [0, 1.0, 1.5, 2.5, 4.0, 6.0];
+
+// Cout d'upgrade relatif au cout de base (LV2 -> LV5)
+export const UPGRADE_COST_MULTIPLIERS = [0, 0, 0.5, 1.5, 2.0, 3.0];
+
+// Bonus de chaine par case possedee dans la meme zone (en %)
+export const CHAIN_BONUS_PER_TILE = 0.15;
+
+// Bonus d'exclusivite quand on possede TOUTE une zone
+export const EXCLUSIVITY_BONUS = 1.5;
 
 // === Mapping des types JSON -> TileType ===
 
@@ -92,7 +105,11 @@ function mapCellType(cell) {
 
 // === Création du plateau depuis le JSON (boards.json) ===
 
-export function parseBoardJSON(gridData) {
+export function parseBoardJSON(boardEntry) {
+  // Support ancien format (tableau direct) et nouveau format ({ grid, zones })
+  const gridData = boardEntry.grid || boardEntry;
+  const zoneDefs = boardEntry.zones || [];
+
   const rows = gridData.length;
   const cols = Math.max(...gridData.map(row => row.length));
 
@@ -121,6 +138,7 @@ export function parseBoardJSON(gridData) {
         currentValue: 0,
         level: 0,
         tollValue: 0,
+        zone: cell.zone || null,
         // Metadonnees du JSON
         hasDice: cell.hasDice || false,
         noBox: cell.noBox || false,
@@ -144,7 +162,7 @@ export function parseBoardJSON(gridData) {
   // Phase 3 : detecter et ajouter les liens depuis les chaines de teleporters
   const links = detectLinks(gridData, rows, cols, posToId, tiles);
 
-  return { tiles, links, rows, cols, startTileId, posToId };
+  return { tiles, links, rows, cols, startTileId, posToId, zones: zoneDefs };
 }
 
 // === Detection automatique des liens ===
@@ -160,7 +178,6 @@ function detectLinks(gridData, rows, cols, posToId, tiles) {
       if (!cell || cell.type !== 'teleporter' || cell.direction !== 'horizontal') continue;
       if (visited.has(`${r},${c}`)) continue;
 
-      // Trouver toute la chaine horizontale
       const chainCells = [];
       let cc = c;
       while (cc < cols) {
@@ -171,7 +188,6 @@ function detectLinks(gridData, rows, cols, posToId, tiles) {
         cc++;
       }
 
-      // Trouver les cases aux extremites
       const fromId = posToId[`${r},${c - 1}`];
       const toId = posToId[`${r},${cc}`];
 
@@ -239,34 +255,64 @@ export function getAvailableMoves(tiles, tileId, lastDirection) {
   return moves;
 }
 
-// === Peage et valeur ===
+// === Zones : calculs de bonus ===
 
+// Compte les cases possedees par un joueur dans la meme zone
+export function countOwnedInZone(tiles, zone, ownerId) {
+  if (!zone) return 0;
+  return tiles.filter(t => t.zone === zone && t.owner === ownerId).length;
+}
+
+// Compte le nombre total de cases dans une zone
+export function countTilesInZone(tiles, zone) {
+  if (!zone) return 0;
+  return tiles.filter(t => t.zone === zone && t.type === TileType.NORMAL).length;
+}
+
+// Verifie si un joueur possede toute une zone (monopole)
+export function hasZoneMonopoly(tiles, zone, ownerId) {
+  if (!zone) return false;
+  const zoneTiles = tiles.filter(t => t.zone === zone && t.type === TileType.NORMAL);
+  return zoneTiles.length > 0 && zoneTiles.every(t => t.owner === ownerId);
+}
+
+// === Peage et valeur (formules fideles au Command Board) ===
+
+// Valeur d'une case = base x multiplicateur_niveau x bonus_chaine x bonus_exclusivite
+export function calculateTileValue(tiles, tileId) {
+  const tile = tiles[tileId];
+  if (!tile.owner || tile.level === 0) return 0;
+
+  const cardBonus = tile.cardPlaced ? tile.cardPlaced.value * 50 : 0;
+  const base = tile.baseValue + cardBonus;
+
+  // Multiplicateur de niveau
+  const levelMult = LEVEL_MULTIPLIERS[tile.level] || 1;
+
+  // Bonus de chaine (cases de la meme zone possedees par le meme joueur)
+  const ownedInZone = countOwnedInZone(tiles, tile.zone, tile.owner);
+  const chainMult = 1 + Math.max(0, ownedInZone - 1) * CHAIN_BONUS_PER_TILE;
+
+  // Bonus d'exclusivite (monopole complet de la zone)
+  const exclusivityMult = hasZoneMonopoly(tiles, tile.zone, tile.owner) ? EXCLUSIVITY_BONUS : 1;
+
+  return Math.floor(base * levelMult * chainMult * exclusivityMult);
+}
+
+// Peage = valeur x taux_de_peage[niveau]
 export function calculateToll(tiles, tileId) {
   const tile = tiles[tileId];
   if (!tile.owner || tile.level === 0) return 0;
 
-  let baseToll = Math.floor(tile.currentValue * TOLL_RATE);
+  const value = tile.currentValue;
+  const tollRate = TOLL_RATES[tile.level] || 0;
 
-  let chainCount = 0;
-  for (const adj of Object.values(tile.adjacencies)) {
-    if (adj && !adj.isLink && tiles[adj.tileId].owner === tile.owner) {
-      chainCount++;
-    }
-  }
-
-  return Math.floor(baseToll * (1 + chainCount * CHAIN_BONUS_RATE));
+  return Math.floor(value * tollRate);
 }
 
 export function updateTileValue(tiles, tileId) {
   const tile = tiles[tileId];
-  if (tile.level === 0) {
-    tile.currentValue = 0;
-    tile.tollValue = 0;
-    return;
-  }
-  const cardValue = tile.cardPlaced ? tile.cardPlaced.value * 50 : 0;
-  const upgradeValue = (tile.level - 1) * 100;
-  tile.currentValue = tile.baseValue + cardValue + upgradeValue;
+  tile.currentValue = calculateTileValue(tiles, tileId);
   tile.tollValue = calculateToll(tiles, tileId);
 }
 
@@ -282,8 +328,11 @@ export function getBuyoutCost(tile) {
   return tile.currentValue * BUYOUT_MULTIPLIER;
 }
 
+// Cout d'upgrade relatif au cout de base de la case
 export function getUpgradeCost(tile) {
-  return 100 + tile.level * 50;
+  const nextLevel = tile.level + 1;
+  if (nextLevel > 5) return Infinity;
+  return Math.floor(tile.baseValue * UPGRADE_COST_MULTIPLIERS[nextLevel]);
 }
 
 export function isCheckpoint(type) {
