@@ -108,8 +108,16 @@ export class AI {
         score += 5;
       }
 
-      // Eviter les degats
-      if (tile.type === TileType.DAMAGE) score -= 15;
+      // Eviter les degats (sauf si on chevauche un Prize Cube)
+      if (tile.type === TileType.DAMAGE) {
+        if (player.prizeCube) {
+          score += 5; // On est protege, les degats sont accumules
+        } else if (tile.hasDice) {
+          score += 10; // Prize Cube disponible !
+        } else {
+          score -= 15;
+        }
+      }
 
       // Booster
       if (tile.type === TileType.BOOSTER) score += 12;

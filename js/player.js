@@ -27,7 +27,7 @@ export function createPlayer(id, name, isHuman = false, color = '#4a9eff') {
     doubleTollTurns: 0,  // Nombre de tours restants avec peages doubles
     hasJustice: false,   // Captain Justice attache
     hasDark: false,      // Captain Dark attache
-    carryingDice: false, // Porte une case de (damage track)
+    prizeCube: null,     // { sourceId, counter, accumulatedGP } si chevauche un Prize Cube
     boosterPercent: 1,   // Pourcentage GP Booster accumule (1% initial)
     // Historique pour anti-demi-tour (direction du dernier deplacement)
     lastDirection: null,
@@ -50,9 +50,9 @@ export function addGP(player, amount) {
   player.gp += amount;
 }
 
-// Transfere des GP entre joueurs
+// Transfere des GP entre joueurs (peut rendre from.gp negatif -> vente forcee)
 export function transferGP(from, to, amount) {
-  const actual = Math.min(from.gp, Math.max(0, amount));
+  const actual = Math.max(0, amount);
   from.gp -= actual;
   to.gp += actual;
   return actual;

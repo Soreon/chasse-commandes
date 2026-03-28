@@ -165,8 +165,8 @@ export class Renderer {
   }
 
   // === Rendu principal ===
-  render(boardData, players, currentPlayerId, animState) {
-    this._lastRenderArgs = [boardData, players, currentPlayerId, animState];
+  render(boardData, players, currentPlayerId, animState, prizeCubes) {
+    this._lastRenderArgs = [boardData, players, currentPlayerId, animState, prizeCubes];
     if (!this.imagesLoaded) return;
 
     const { tiles, links, rows, cols, zones } = boardData;
@@ -188,7 +188,7 @@ export class Renderer {
 
     // 2. Cases
     for (const tile of tiles) {
-      this.drawTile(tile, players);
+      this.drawTile(tile, players, prizeCubes);
     }
 
     // 3. Joueurs (sauf celui en animation)
@@ -248,7 +248,7 @@ export class Renderer {
   }
 
   // Dessiner une case
-  drawTile(tile, players) {
+  drawTile(tile, players, prizeCubes) {
     const ctx = this.ctx;
     const { x, y } = this.getTileCenter(tile);
     const half = this.tileSize / 2;
@@ -275,9 +275,23 @@ export class Renderer {
       }
     }
 
-    // Dice recouvre la case damage
-    if (tile.type === TileType.DAMAGE && tile.hasDice && this.diceImage) {
+    // Prize Cube sur une case damage (libre, non chevauche)
+    const cubeHere = prizeCubes?.find(c => c.tileId === tile.id && c.riderId === null);
+    if (cubeHere && this.diceImage) {
       ctx.drawImage(this.diceImage, x - half, y - half, this.tileSize, this.tileSize);
+
+      // Afficher le compteur du Prize Cube
+      const fontSize = Math.max(8, this.tileSize * 0.25);
+      ctx.fillStyle = '#ffd700';
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(cubeHere.counter, x, y + half * 0.6);
+
+      // Afficher les GP accumules
+      ctx.fillStyle = '#fff';
+      ctx.font = `${Math.max(6, this.tileSize * 0.15)}px sans-serif`;
+      ctx.fillText(`${cubeHere.accumulatedGP}G`, x, y - half * 0.4);
     }
 
     // Niveau et peage pour les cases possedees
@@ -335,6 +349,12 @@ export class Renderer {
     ctx.fillText(player.name[0], px, py);
 
     // Indicateurs d'etat
+    if (player.prizeCube) {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('🎁', px, py - PLAYER_RADIUS - 6);
+    }
     if (player.stunned) {
       ctx.fillStyle = '#ff0';
       ctx.font = '12px sans-serif';

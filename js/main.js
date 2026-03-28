@@ -358,6 +358,33 @@ function showOverlay(type, tile, player, board, callback) {
       game.endTurn();
     });
 
+  } else if (type === 'forcedSale') {
+    // tile contient { player, board } ici
+    const salePlayer = tile.player;
+    const ownedTiles = board.filter(t => t.owner === salePlayer.id && t.level > 0);
+
+    content.innerHTML = `
+      <h3>Vente forcee !</h3>
+      <p>Vos GP sont negatifs : <span class="gp-amount" style="color:var(--accent-red)">${salePlayer.gp} GP</span></p>
+      <p>Choisissez une case a vendre :</p>
+      <div id="forced-sale-tiles" style="display:flex;gap:8px;justify-content:center;margin:10px 0;flex-wrap:wrap"></div>
+    `;
+    overlay.classList.remove('hidden');
+
+    const tilesContainer = content.querySelector('#forced-sale-tiles');
+    for (const t of ownedTiles) {
+      const el = document.createElement('button');
+      el.className = 'overlay-btn danger';
+      el.style.cssText = 'padding:8px 12px;text-align:center';
+      el.innerHTML = `Case ${t.id}<br><small>Nv.${t.level} - ${t.currentValue} GP</small>`;
+      el.addEventListener('click', () => {
+        overlay.classList.add('hidden');
+        game.sellTile(salePlayer, t);
+        if (callback) callback();
+      });
+      tilesContainer.appendChild(el);
+    }
+
   } else if (type === 'event') {
     content.innerHTML = `
       <h3>${tile.message}</h3>

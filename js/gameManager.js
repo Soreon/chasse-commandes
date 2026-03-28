@@ -33,6 +33,9 @@ export class GameManager {
     // Captain Justice/Dark
     this.captainJusticeActive = false;
     this.captainDarkActive = false;
+
+    // Prize Cubes : { id, sourceTileId, tileId, counter, maxCounter, accumulatedGP, riderId }
+    this.prizeCubes = [];
   }
 
   // Initialise une nouvelle partie
@@ -64,6 +67,24 @@ export class GameManager {
     this.currentPlayerIndex = 0;
     this.turnNumber = 1;
     this.phase = 'hand';
+
+    // Initialiser les Prize Cubes a partir des cases damage avec hasDice
+    this.prizeCubes = [];
+    let cubeId = 0;
+    for (const tile of this.board) {
+      if (tile.type === TileType.DAMAGE && tile.hasDice) {
+        const maxCounter = 7; // Compteur par defaut
+        this.prizeCubes.push({
+          id: cubeId++,
+          sourceTileId: tile.id,
+          tileId: tile.id,
+          counter: maxCounter,
+          maxCounter,
+          accumulatedGP: 200, // GP de base initial dans le cube
+          riderId: null,
+        });
+      }
+    }
 
     // Renderer
     const canvas = document.getElementById('board-canvas');
@@ -278,6 +299,52 @@ export class GameManager {
     effects[Math.floor(Math.random() * effects.length)]();
   }
 
+  // === PRIZE CUBE ===
+
+  // Trouve un Prize Cube sur une case donnee (non chevauche)
+  getPrizeCubeAtTile(tileId) {
+    return this.prizeCubes.find(c => c.tileId === tileId && c.riderId === null);
+  }
+
+  // Trouve le Prize Cube chevauche par un joueur
+  getPlayerPrizeCube(playerId) {
+    return this.prizeCubes.find(c => c.riderId === playerId);
+  }
+
+  // Le joueur monte sur un Prize Cube
+  mountPrizeCube(player, cube) {
+    cube.riderId = player.id;
+    player.prizeCube = { cubeId: cube.id };
+    this.log(`${player.name} monte sur le Prize Cube ! (compteur: ${cube.counter})`, 'important');
+  }
+
+  // Le joueur descend du Prize Cube et recoit les GP accumules
+  dismountPrizeCube(player, cube) {
+    const gp = cube.accumulatedGP;
+    addGP(player, gp);
+    this.log(`Le Prize Cube se brise ! ${player.name} recoit ${gp} GP accumules !`, 'important');
+    player.prizeCube = null;
+
+    // Respawn le cube a sa position d'origine apres un delai
+    cube.riderId = null;
+    cube.tileId = cube.sourceTileId;
+    cube.counter = cube.maxCounter;
+    cube.accumulatedGP = 200; // GP de base initial
+  }
+
+  // Piratage : un autre joueur vole le Prize Cube
+  piratePrizeCube(thief, previousRider, cube) {
+    // Le cavalier precedent tombe et subit des degats
+    previousRider.prizeCube = null;
+    this.log(`${thief.name} vole le Prize Cube a ${previousRider.name} !`, 'important');
+    this.applyDamagePenalty(previousRider);
+
+    // Le voleur monte sur le cube
+    cube.riderId = thief.id;
+    thief.prizeCube = { cubeId: cube.id };
+    this.log(`${thief.name} chevauche le Prize Cube ! (${cube.accumulatedGP} GP, compteur: ${cube.counter})`, 'important');
+  }
+
   // === PHASE 2 : LANCER DE DES ===
 
   async roll() {
@@ -362,12 +429,6 @@ export class GameManager {
     const fromTileId = player.position;
     const fromTile = this.board[fromTileId];
 
-    // Ramasser le de sur la case de depart (le joueur etait pose dessus)
-    if (!player.carryingDice && fromTile.type === TileType.DAMAGE && fromTile.hasDice) {
-      fromTile.hasDice = false;
-      player.carryingDice = true;
-    }
-
     // Animation
     await this.animateMovement(fromTileId, move.tileId, player);
 
@@ -376,29 +437,27 @@ export class GameManager {
 
     const toTile = this.board[move.tileId];
 
-    // === Mecanique du de mobile sur les damage tracks ===
+    // === Mecanique du Prize Cube ===
+    const riddenCube = this.getPlayerPrizeCube(player.id);
 
-    // Ramasser un de en marchant sur une case qui en a un (vol)
-    if (toTile.type === TileType.DAMAGE && toTile.hasDice && !player.carryingDice) {
-      toTile.hasDice = false;
-      player.carryingDice = true;
-      this.log(`${player.name} recupere la case de !`);
+    if (riddenCube) {
+      // Le joueur chevauche un Prize Cube
+      riddenCube.tileId = move.tileId; // Le cube suit le joueur
 
-      // Voler le de a un joueur qui etait protege ici
-      for (const other of this.players) {
-        if (other.id !== player.id && other.position === move.tileId) {
-          this.log(`${other.name} perd la protection du de !`, 'negative');
-          this.applyDamagePenalty(other);
+      if (toTile.type === TileType.DAMAGE) {
+        // Accumuler les GP des degats evites
+        const damage = 100 + Math.floor(Math.random() * 200);
+        riddenCube.accumulatedGP += damage;
+        riddenCube.counter--;
+
+        if (riddenCube.counter <= 0) {
+          // Le cube se brise
+          this.dismountPrizeCube(player, riddenCube);
         }
+      } else {
+        // Sortie de la zone de degats : le cube se brise aussi
+        this.dismountPrizeCube(player, riddenCube);
       }
-    }
-
-    // Deposer le de quand on quitte la damage track
-    if (player.carryingDice && toTile.type !== TileType.DAMAGE) {
-      if (fromTile.type === TileType.DAMAGE) {
-        fromTile.hasDice = true;
-      }
-      player.carryingDice = false;
     }
 
     // Effets de passage seulement si on ne s'arrete PAS ici (pas la derniere case)
@@ -543,17 +602,39 @@ export class GameManager {
       return;
     }
     if (tile.type === TileType.DAMAGE) {
-      if (player.carryingDice) {
-        tile.hasDice = true;
-        player.carryingDice = false;
-        this.log(`${player.name} est en securite sur la case de !`);
+      // Verifier Prize Cube sur cette case
+      const cubeHere = this.getPrizeCubeAtTile(tile.id);
+      const riddenCube = this.getPlayerPrizeCube(player.id);
+
+      if (riddenCube) {
+        // Le joueur chevauche deja un cube - il est en securite
+        this.log(`${player.name} est en securite sur le Prize Cube !`);
         this.render();
         this.endTurn();
-      } else if (tile.hasDice) {
-        this.log(`${player.name} est en securite sur la case de !`);
+      } else if (cubeHere) {
+        // Prize Cube libre : monter dessus
+        this.mountPrizeCube(player, cubeHere);
+        this.render();
         this.endTurn();
       } else {
-        this.handleDamageTile(player);
+        // Verifier si un autre joueur chevauche un cube ICI (piratage)
+        let pirated = false;
+        for (const other of this.players) {
+          if (other.id !== player.id && other.prizeCube) {
+            const otherCube = this.getPlayerPrizeCube(other.id);
+            if (otherCube && otherCube.tileId === tile.id) {
+              this.piratePrizeCube(player, other, otherCube);
+              pirated = true;
+              break;
+            }
+          }
+        }
+        if (pirated) {
+          this.render();
+          this.endTurn();
+        } else {
+          this.handleDamageTile(player);
+        }
       }
       return;
     }
@@ -900,6 +981,71 @@ export class GameManager {
     }
   }
 
+  // === VENTE FORCEE ===
+
+  // Vend une case possedee : le joueur recupere sa valeur en GP courants
+  sellTile(player, tile) {
+    const value = tile.currentValue;
+    player.gp += value;
+    this.log(`${player.name} vend la case ${tile.id} pour ${value} GP.`, 'negative');
+    tile.owner = null;
+    tile.cardPlaced = null;
+    tile.level = 0;
+    updateTileValue(this.board, tile.id);
+    updateAllTolls(this.board);
+    this.render();
+  }
+
+  // Verifie si un joueur doit vendre des cases (GP < 0) et lance le processus
+  // Retourne true si une vente forcee est en cours (async pour humain)
+  checkForcedSale(player, callback) {
+    if (player.gp >= 0) {
+      callback();
+      return;
+    }
+
+    const ownedTiles = this.board.filter(t => t.owner === player.id && t.level > 0);
+
+    // Plus de cases a vendre : GP reste negatif, on cap a 0
+    if (ownedTiles.length === 0) {
+      player.gp = 0;
+      this.log(`${player.name} n'a plus de cases a vendre.`);
+      callback();
+      return;
+    }
+
+    if (player.isHuman) {
+      // Afficher l'overlay de vente forcee
+      this.showForcedSaleOverlay(player, callback);
+    } else {
+      // IA : vendre la case la moins chere jusqu'a GP >= 0
+      this.autoForcedSale(player);
+      callback();
+    }
+  }
+
+  autoForcedSale(player) {
+    while (player.gp < 0) {
+      const ownedTiles = this.board
+        .filter(t => t.owner === player.id && t.level > 0)
+        .sort((a, b) => a.currentValue - b.currentValue);
+      if (ownedTiles.length === 0) {
+        player.gp = 0;
+        break;
+      }
+      this.sellTile(player, ownedTiles[0]);
+    }
+  }
+
+  showForcedSaleOverlay(player, callback) {
+    if (this.onShowOverlay) {
+      this.onShowOverlay('forcedSale', { player, board: this.board }, player, this.board, () => {
+        // Apres une vente, re-verifier si encore en negatif
+        this.checkForcedSale(player, callback);
+      });
+    }
+  }
+
   // === FIN DE TOUR ===
 
   endTurn() {
@@ -914,15 +1060,18 @@ export class GameManager {
     // Reset l'effet de main actif
     this.activeHandEffect = null;
 
-    // Verifier victoire (le joueur doit etre sur le depart)
-    const netWorth = calculateNetWorth(player, this.board);
-    if (netWorth >= this.gpGoal && player.position === this.startTileId) {
-      this.victory(player);
-      return;
-    }
+    // Verifier vente forcee si GP negatifs, puis continuer
+    this.checkForcedSale(player, () => {
+      // Verifier victoire (le joueur doit etre sur le depart)
+      const netWorth = calculateNetWorth(player, this.board);
+      if (netWorth >= this.gpGoal && player.position === this.startTileId) {
+        this.victory(player);
+        return;
+      }
 
-    // Joueur suivant
-    this.nextPlayer();
+      // Joueur suivant
+      this.nextPlayer();
+    });
   }
 
   nextPlayer() {
@@ -1013,7 +1162,7 @@ export class GameManager {
 
   render() {
     if (this.renderer) {
-      this.renderer.render(this.boardData, this.players, this.currentPlayer?.id, this.animState);
+      this.renderer.render(this.boardData, this.players, this.currentPlayer?.id, this.animState, this.prizeCubes);
     }
   }
 
