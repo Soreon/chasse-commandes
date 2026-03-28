@@ -417,6 +417,32 @@ body {
   100% { transform: rotateX(360deg) scale(1); opacity: 1; }
 }
 
+/* Tile tooltip */
+.tile-tooltip {
+  position: fixed;
+  pointer-events: none;
+  z-index: 300;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  padding: 6px 10px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+.tile-tooltip.hidden { display: none; }
+.tile-tooltip .tt-title {
+  font-weight: 700;
+  color: var(--accent-blue);
+  margin-bottom: 2px;
+}
+.tile-tooltip .tt-owner { color: var(--text-primary); }
+.tile-tooltip .tt-level { color: var(--accent-gold); font-weight: 600; }
+.tile-tooltip .tt-toll { color: var(--accent-red); }
+.tile-tooltip .tt-value { color: var(--accent-green); }
+.tile-tooltip .tt-zone { color: var(--text-secondary); font-size: 0.85rem; }
+.tile-tooltip .tt-cube { color: var(--accent-gold); }
+
 /* Direction buttons */
 #direction-buttons {
   display: flex;

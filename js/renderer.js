@@ -70,7 +70,8 @@ export class Renderer {
     // Mapping zone -> indice de panel colore
     this.zonePanelMap = {}; // { "A": 1, "B": 5, ... }
 
-    // Case survolee par la souris
+    // Tooltip HTML
+    this.tooltipEl = document.getElementById('tile-tooltip');
     this.hoveredTileId = null;
 
     this.resize();
@@ -86,19 +87,12 @@ export class Renderer {
       const rect = canvas.getBoundingClientRect();
       const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
       const my = (e.clientY - rect.top) * (canvas.height / rect.height);
-      const prev = this.hoveredTileId;
       this.hoveredTileId = this.getTileAtPixel(mx, my);
-      if (this.hoveredTileId !== prev && this._lastRenderArgs) {
-        this.render(...this._lastRenderArgs);
-      }
+      this.updateTooltip(e.clientX, e.clientY);
     });
     canvas.addEventListener('mouseleave', () => {
-      if (this.hoveredTileId !== null) {
-        this.hoveredTileId = null;
-        if (this._lastRenderArgs) {
-          this.render(...this._lastRenderArgs);
-        }
-      }
+      this.hoveredTileId = null;
+      this.hideTooltip();
     });
   }
 
@@ -115,6 +109,77 @@ export class Renderer {
       }
     }
     return null;
+  }
+
+  hideTooltip() {
+    if (this.tooltipEl) this.tooltipEl.classList.add('hidden');
+  }
+
+  updateTooltip(mouseX, mouseY) {
+    if (this.hoveredTileId === null || !this._lastRenderArgs) {
+      this.hideTooltip();
+      return;
+    }
+
+    const [boardData, players, , , prizeCubes] = this._lastRenderArgs;
+    const tile = boardData.tiles[this.hoveredTileId];
+    if (!tile) { this.hideTooltip(); return; }
+
+    const lines = [];
+
+    // Nom du type de case
+    const typeNames = {
+      start: 'Depart', normal: 'Commande', bonus: 'Bonus',
+      damage: 'Degats', event: 'Special', booster: 'GP Booster',
+      checkpoint_red: 'Checkpoint Rouge', checkpoint_blue: 'Checkpoint Bleu',
+      checkpoint_yellow: 'Checkpoint Jaune', checkpoint_green: 'Checkpoint Vert',
+    };
+    lines.push(`<div class="tt-title">${typeNames[tile.type] || tile.type} #${tile.id}</div>`);
+
+    // Zone
+    if (tile.zone) {
+      const zoneDef = boardData.zones?.find(z => z.id === tile.zone);
+      lines.push(`<div class="tt-zone">Zone : ${zoneDef?.name || tile.zone}</div>`);
+    }
+
+    // Proprietaire et stats
+    if (tile.owner !== null && tile.level > 0) {
+      const owner = players.find(p => p.id === tile.owner);
+      lines.push(`<div class="tt-owner">Proprio : <span style="color:${owner?.color}">${owner?.name}</span></div>`);
+      lines.push(`<div class="tt-level">Niveau ${tile.level} — Valeur : ${tile.currentValue} GP</div>`);
+      lines.push(`<div class="tt-toll">Peage : ${tile.tollValue} GP</div>`);
+    } else if (tile.type === 'normal' && tile.owner === null) {
+      lines.push(`<div class="tt-value">Libre — Cout : ${tile.baseValue} GP</div>`);
+    }
+
+    // Prize Cube
+    const cube = prizeCubes?.find(c => c.tileId === tile.id && c.riderId === null);
+    if (cube) {
+      lines.push(`<div class="tt-cube">Prize Cube : ${cube.counter} pas — ${cube.accumulatedGP} GP</div>`);
+    }
+
+    // Rien d'interessant a afficher pour les cases basiques sans info
+    if (lines.length <= 1 && !cube) {
+      this.hideTooltip();
+      return;
+    }
+
+    this.tooltipEl.innerHTML = lines.join('');
+    this.tooltipEl.classList.remove('hidden');
+
+    // Positionner la tooltip pres de la souris
+    const offset = 14;
+    let tx = mouseX + offset;
+    let ty = mouseY + offset;
+
+    // Eviter de sortir de l'ecran
+    const tw = this.tooltipEl.offsetWidth;
+    const th = this.tooltipEl.offsetHeight;
+    if (tx + tw > window.innerWidth - 8) tx = mouseX - tw - offset;
+    if (ty + th > window.innerHeight - 8) ty = mouseY - th - offset;
+
+    this.tooltipEl.style.left = tx + 'px';
+    this.tooltipEl.style.top = ty + 'px';
   }
 
   async loadImages() {
@@ -332,46 +397,6 @@ export class Renderer {
     const cubeHere = prizeCubes?.find(c => c.tileId === tile.id && c.riderId === null);
     if (cubeHere && this.diceImage) {
       ctx.drawImage(this.diceImage, x - half, y - half, this.tileSize, this.tileSize);
-    }
-
-    // Tooltip au survol : infos de la case
-    const isHovered = this.hoveredTileId === tile.id;
-    if (isHovered) {
-      // Prize Cube : compteur et GP
-      if (cubeHere) {
-        const fontSize = Math.max(8, this.tileSize * 0.25);
-        ctx.fillStyle = '#ffd700';
-        ctx.font = `bold ${fontSize}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(cubeHere.counter, x, y + half * 0.6);
-
-        ctx.fillStyle = '#fff';
-        ctx.font = `${Math.max(6, this.tileSize * 0.15)}px sans-serif`;
-        ctx.fillText(`${cubeHere.accumulatedGP}G`, x, y - half * 0.4);
-      }
-
-      // Niveau et peage pour les cases possedees
-      if (tile.owner !== null && tile.level > 0) {
-        const fontSize = Math.max(8, this.tileSize * 0.22);
-
-        // Fond semi-transparent pour lisibilite
-        const labelW = this.tileSize * 1.2;
-        const labelH = fontSize + 4;
-        ctx.fillStyle = 'rgba(10, 14, 26, 0.85)';
-        ctx.fillRect(x - labelW / 2, y + half + 1, labelW, labelH);
-        ctx.fillRect(x - labelW / 2, y - half - labelH - 1, labelW, labelH);
-
-        ctx.fillStyle = '#ffd700';
-        ctx.font = `bold ${fontSize}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`Lv${tile.level}`, x, y + half + labelH / 2 + 1);
-
-        ctx.fillStyle = '#aaa';
-        ctx.font = `${fontSize}px sans-serif`;
-        ctx.fillText(`${tile.tollValue}G`, x, y - half - labelH / 2 - 1);
-      }
     }
   }
 
