@@ -183,21 +183,16 @@ function updateHUD(gm) {
     const net = calculateNetWorth(p, gm.board);
     const div = document.createElement('div');
     div.className = `player-info-card${p.id === player.id ? ' active' : ''}`;
+    const cpHtml = ['red', 'blue', 'yellow', 'green']
+      .map(c => `<div class="p-cp ${c}${p.checkpoints[c] ? ' active' : ''}"></div>`)
+      .join('');
     div.innerHTML = `
       <div class="p-name" style="color:${p.color}">${p.name}${p.isHuman ? '' : ' (IA)'}</div>
       <div class="p-gp">${p.gp.toLocaleString()} GP</div>
       <div class="p-net">Net: ${net.toLocaleString()}</div>
+      <div class="p-checkpoints">${cpHtml}</div>
     `;
     listEl.appendChild(div);
-  }
-
-  // Checkpoints (joueur humain)
-  const human = gm.players.find(p => p.isHuman);
-  if (human) {
-    for (const color of ['red', 'blue', 'yellow', 'green']) {
-      const el = document.getElementById(`cp-${color}`);
-      if (el) el.classList.toggle('active', human.checkpoints[color]);
-    }
   }
 
   enableActions();
@@ -318,9 +313,11 @@ function showOverlay(type, tile, player, board, callback) {
       if (player.gpProtector > 0) {
         player.gpProtector--;
         game.log(`Protecteur GP actif ! Peage bloque.`, 'important');
+        game.showNotif('🛡️', 'Protecteur GP ! Peage bloque !', 'positive');
       } else {
         const actual = transferGP(player, owner, tollAmount);
         game.log(`${player.name} paye ${actual} GP de peage a ${owner.name}.`, 'negative');
+        game.showNotif('💰', `-${actual} GP de peage`, 'negative');
       }
       game.endTurn();
     });

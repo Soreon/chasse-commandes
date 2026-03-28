@@ -337,6 +337,7 @@ export class GameManager {
     const gp = cube.accumulatedGP;
     addGP(player, gp);
     this.log(`Le Prize Cube se brise ! ${player.name} recoit ${gp} GP accumules !`, 'important');
+    this.showNotif('💎', `Prize Cube ! +${gp} GP`, 'positive');
     player.prizeCube = null;
 
     // Respawn le cube a sa position d'origine
@@ -351,6 +352,7 @@ export class GameManager {
     // Le cavalier precedent tombe et subit des degats
     previousRider.prizeCube = null;
     this.log(`${thief.name} vole le Prize Cube a ${previousRider.name} !`, 'important');
+    this.showNotif('🏴‍☠️', `${thief.name} vole le Prize Cube !`, 'negative');
     this.applyDamagePenalty(previousRider);
 
     // Le voleur monte sur le cube
@@ -400,6 +402,20 @@ export class GameManager {
     setTimeout(() => {
       document.getElementById('dice-overlay').classList.add('hidden');
     }, 1200);
+  }
+
+  // Affiche une notification visuelle temporaire (icon + texte)
+  // style: 'positive' | 'negative' | 'info' (defaut)
+  showNotif(icon, text, style = 'info', duration = 1200) {
+    const display = document.getElementById('notif-display');
+    display.innerHTML = `<span class="notif-icon">${icon}</span><span class="notif-text ${style}">${text}</span>`;
+    const overlay = document.getElementById('notif-overlay');
+    overlay.classList.remove('hidden');
+    // Reset l'animation
+    display.style.animation = 'none';
+    display.offsetHeight; // force reflow
+    display.style.animation = '';
+    setTimeout(() => overlay.classList.add('hidden'), duration);
   }
 
   // === PHASE 3 : DEPLACEMENT ===
@@ -559,6 +575,7 @@ export class GameManager {
         } else {
           this.log(`${player.name} active le checkpoint ${color} ! +${CHECKPOINT_BONUS_GP} GP`);
         }
+        this.showNotif('🚩', `Checkpoint ${color} ! +${CHECKPOINT_BONUS_GP} GP`, 'positive');
       }
     }
 
@@ -590,6 +607,7 @@ export class GameManager {
       refillHand(player);
       resetCheckpoints(player);
       this.log(`BONUS DE TOUR ! ${player.name} gagne ${LAP_BONUS_GP} GP ! Main restauree.`, 'important');
+      this.showNotif('⭐', `Bonus de tour ! +${LAP_BONUS_GP} GP`, 'positive');
     }
   }
 
@@ -796,6 +814,7 @@ export class GameManager {
       } else {
         const actual = transferGP(player, owner, tollAmount);
         this.log(`${player.name} paye ${actual} GP de peage a ${owner.name}.`, 'negative');
+        this.showNotif('💰', `${player.name} paye ${actual} GP a ${owner.name}`, 'negative');
       }
       this.endTurn();
     }
@@ -811,6 +830,7 @@ export class GameManager {
     updateTileValue(this.board, tile.id);
     updateAllTolls(this.board);
     this.log(`${player.name} achete la case ${tile.id} pour ${tile.baseValue} GP !${card ? ` (${card.name} placee)` : ''}`, 'important');
+    this.showNotif('🏠', `Case achetee ! -${tile.baseValue} GP`, 'info');
     this.render();
   }
 
@@ -834,6 +854,7 @@ export class GameManager {
     updateTileValue(this.board, tile.id);
     updateAllTolls(this.board);
     this.log(`${player.name} rachete de force la case ${tile.id} pour ${cost} GP !`, 'important');
+    this.showNotif('⚔️', `Rachat force ! -${cost} GP`, 'negative');
     this.render();
   }
 
@@ -870,6 +891,7 @@ export class GameManager {
     if (player.gpProtector > 0) {
       player.gpProtector--;
       this.log(`Protecteur GP actif ! Degats bloques.`, 'important');
+      this.showNotif('🛡️', 'Protecteur GP ! Degats bloques !', 'positive');
       if (player.isHuman) {
         this.showEventResult('Protecteur GP ! Degats bloques !', () => this.endTurn());
       } else {
@@ -880,6 +902,7 @@ export class GameManager {
 
     addGP(player, -damage);
     this.log(`Case Degats ! ${player.name} perd ${damage} GP !`, 'negative');
+    this.showNotif('💥', `${player.name} -${damage} GP`, 'negative');
 
     if (player.isHuman) {
       this.showEventResult(`Degats ! -${damage} GP`, () => this.endTurn());
@@ -1177,6 +1200,7 @@ export class GameManager {
     const bonus = Math.floor(player.gp * percent / 100);
     addGP(player, bonus);
     this.log(`Case Booster ! Multiplicateur ${percent}% active ! +${bonus} GP.`, 'important');
+    this.showNotif('🚀', `Booster ${percent}% ! +${bonus} GP`, 'positive');
     player.boosterPercent = 1; // Reset
 
     if (player.isHuman) {

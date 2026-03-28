@@ -298,28 +298,24 @@ body {
 .player-info-card .p-gp { color: var(--accent-gold); }
 .player-info-card .p-net { color: var(--accent-green); font-size: 0.75rem; }
 
-/* Checkpoints Panel */
-#checkpoints-panel {
-  position: absolute;
-  top: 50px;
-  left: 10px;
+/* Checkpoints inline dans les player cards */
+.p-checkpoints {
   display: flex;
-  flex-direction: column;
   gap: 4px;
-  z-index: 10;
+  margin-top: 3px;
 }
-.checkpoint {
-  width: 24px;
-  height: 24px;
-  border: 2px solid var(--border-color);
-  opacity: 0.3;
-  transition: all 0.3s;
+.p-cp {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 2px;
+  opacity: 0.25;
 }
-.checkpoint.active { opacity: 1; box-shadow: 0 0 8px; }
-.checkpoint.red { background: #ff4a4a; }
-.checkpoint.blue { background: #4a9eff; }
-.checkpoint.yellow { background: #ffd700; }
-.checkpoint.green { background: #4aff7a; }
+.p-cp.active { opacity: 1; box-shadow: 0 0 6px; }
+.p-cp.red { background: #ff4a4a; }
+.p-cp.blue { background: #4a9eff; }
+.p-cp.yellow { background: #ffd700; }
+.p-cp.green { background: #4aff7a; }
 
 /* Overlays */
 .overlay {
@@ -415,6 +411,41 @@ body {
   0% { transform: rotateX(0) scale(0.5); opacity: 0; }
   50% { transform: rotateX(180deg) scale(1.2); }
   100% { transform: rotateX(360deg) scale(1); opacity: 1; }
+}
+
+/* Notification overlay */
+#notif-overlay {
+  pointer-events: none;
+  background: rgba(10, 14, 26, 0.5);
+  z-index: 200;
+}
+.notif-display {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg-panel);
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px 28px;
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.6);
+  animation: notifPop 0.4s ease-out;
+}
+.notif-icon {
+  font-size: 2.2rem;
+  flex-shrink: 0;
+}
+.notif-text {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--text-light);
+}
+.notif-text.positive { color: #4cff8d; }
+.notif-text.negative { color: #ff6b6b; }
+.notif-text.info { color: #6bcaff; }
+@keyframes notifPop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 /* Tile tooltip */
