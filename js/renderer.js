@@ -403,7 +403,7 @@ export class Renderer {
   // Dessine l'image dice.png centree sur une position
   drawDiceAt(x, y) {
     if (!this.diceImage) return;
-    const size = this.tileSize * 0.7;
+    const size = this.tileSize;
     const half = size / 2;
     this.ctx.drawImage(this.diceImage, x - half, y - half, size, size);
   }
@@ -423,9 +423,9 @@ export class Renderer {
     const px = x + offset.dx;
     const py = y + offset.dy;
 
-    // Prize Cube : dessiner l'image dice sous le joueur
+    // Prize Cube : dessiner l'image dice au centre de la case (pas a l'offset du joueur)
     if (player.prizeCube) {
-      this.drawDiceAt(px, py);
+      this.drawDiceAt(x, y);
     }
 
     // Halo pour le joueur actif
