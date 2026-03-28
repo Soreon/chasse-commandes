@@ -846,10 +846,16 @@ export class GameManager {
     if (player.gpProtector > 0) {
       player.gpProtector--;
       this.log(`Protecteur GP actif ! Degats bloques.`, 'important');
-    } else {
-      addGP(player, -damage);
-      this.log(`Case Degats ! ${player.name} perd ${damage} GP !`, 'negative');
+      if (player.isHuman) {
+        this.showEventResult('Protecteur GP ! Degats bloques !', () => this.endTurn());
+      } else {
+        this.endTurn();
+      }
+      return;
     }
+
+    addGP(player, -damage);
+    this.log(`Case Degats ! ${player.name} perd ${damage} GP !`, 'negative');
 
     if (player.isHuman) {
       this.showEventResult(`Degats ! -${damage} GP`, () => this.endTurn());
