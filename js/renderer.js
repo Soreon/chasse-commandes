@@ -70,6 +70,9 @@ export class Renderer {
     // Mapping zone -> indice de panel colore
     this.zonePanelMap = {}; // { "A": 1, "B": 5, ... }
 
+    // Case survolee par la souris
+    this.hoveredTileId = null;
+
     this.resize();
     window.addEventListener('resize', () => {
       this.resize();
@@ -77,6 +80,41 @@ export class Renderer {
         this.render(...this._lastRenderArgs);
       }
     });
+
+    // Tracking souris pour tooltip
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+      const prev = this.hoveredTileId;
+      this.hoveredTileId = this.getTileAtPixel(mx, my);
+      if (this.hoveredTileId !== prev && this._lastRenderArgs) {
+        this.render(...this._lastRenderArgs);
+      }
+    });
+    canvas.addEventListener('mouseleave', () => {
+      if (this.hoveredTileId !== null) {
+        this.hoveredTileId = null;
+        if (this._lastRenderArgs) {
+          this.render(...this._lastRenderArgs);
+        }
+      }
+    });
+  }
+
+  // Trouve l'ID de la case sous un pixel du canvas
+  getTileAtPixel(px, py) {
+    if (!this._lastRenderArgs) return null;
+    const tiles = this._lastRenderArgs[0]?.tiles;
+    if (!tiles) return null;
+    const half = this.tileSize / 2;
+    for (const tile of tiles) {
+      const { x, y } = this.getTileCenter(tile);
+      if (px >= x - half && px <= x + half && py >= y - half && py <= y + half) {
+        return tile.id;
+      }
+    }
+    return null;
   }
 
   async loadImages() {
@@ -294,32 +332,46 @@ export class Renderer {
     const cubeHere = prizeCubes?.find(c => c.tileId === tile.id && c.riderId === null);
     if (cubeHere && this.diceImage) {
       ctx.drawImage(this.diceImage, x - half, y - half, this.tileSize, this.tileSize);
-
-      // Afficher le compteur du Prize Cube
-      const fontSize = Math.max(8, this.tileSize * 0.25);
-      ctx.fillStyle = '#ffd700';
-      ctx.font = `bold ${fontSize}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(cubeHere.counter, x, y + half * 0.6);
-
-      // Afficher les GP accumules
-      ctx.fillStyle = '#fff';
-      ctx.font = `${Math.max(6, this.tileSize * 0.15)}px sans-serif`;
-      ctx.fillText(`${cubeHere.accumulatedGP}G`, x, y - half * 0.4);
     }
 
-    // Niveau et peage pour les cases possedees
-    if (tile.owner !== null && tile.level > 0) {
-      const fontSize = Math.max(8, this.tileSize * 0.2);
-      ctx.fillStyle = '#ffd700';
-      ctx.font = `bold ${fontSize}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.fillText(`Lv${tile.level}`, x, y + half + fontSize + 2);
+    // Tooltip au survol : infos de la case
+    const isHovered = this.hoveredTileId === tile.id;
+    if (isHovered) {
+      // Prize Cube : compteur et GP
+      if (cubeHere) {
+        const fontSize = Math.max(8, this.tileSize * 0.25);
+        ctx.fillStyle = '#ffd700';
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(cubeHere.counter, x, y + half * 0.6);
 
-      ctx.fillStyle = '#aaa';
-      ctx.font = `${fontSize}px sans-serif`;
-      ctx.fillText(`${tile.tollValue}G`, x, y - half - 4);
+        ctx.fillStyle = '#fff';
+        ctx.font = `${Math.max(6, this.tileSize * 0.15)}px sans-serif`;
+        ctx.fillText(`${cubeHere.accumulatedGP}G`, x, y - half * 0.4);
+      }
+
+      // Niveau et peage pour les cases possedees
+      if (tile.owner !== null && tile.level > 0) {
+        const fontSize = Math.max(8, this.tileSize * 0.22);
+
+        // Fond semi-transparent pour lisibilite
+        const labelW = this.tileSize * 1.2;
+        const labelH = fontSize + 4;
+        ctx.fillStyle = 'rgba(10, 14, 26, 0.85)';
+        ctx.fillRect(x - labelW / 2, y + half + 1, labelW, labelH);
+        ctx.fillRect(x - labelW / 2, y - half - labelH - 1, labelW, labelH);
+
+        ctx.fillStyle = '#ffd700';
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`Lv${tile.level}`, x, y + half + labelH / 2 + 1);
+
+        ctx.fillStyle = '#aaa';
+        ctx.font = `${fontSize}px sans-serif`;
+        ctx.fillText(`${tile.tollValue}G`, x, y - half - labelH / 2 - 1);
+      }
     }
   }
 
