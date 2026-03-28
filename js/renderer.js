@@ -23,6 +23,21 @@ const TILE_IMAGE_PATHS = {
   [TileType.BOOSTER]: 'images/gpBoosterPanel.png',
 };
 
+// 16 images de command panels colores (cadre = zone, centre blanc = proprietaire)
+const COLORED_PANEL_COUNT = 16;
+
+// Espacement des indices pour maximiser le contraste visuel entre zones adjacentes
+// Pour N zones, on pioche des indices espaces dans 1..16
+function getZonePanelIndices(zoneCount) {
+  if (zoneCount <= 0) return [];
+  const step = COLORED_PANEL_COUNT / zoneCount;
+  const indices = [];
+  for (let i = 0; i < zoneCount; i++) {
+    indices.push(Math.floor(1 + i * step));
+  }
+  return indices;
+}
+
 function loadImage(src) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -30,6 +45,52 @@ function loadImage(src) {
     img.onerror = () => resolve(null);
     img.src = src;
   });
+}
+
+// Cree une version teintee d'un panel : remplace les pixels blancs/clairs par playerColor
+function createTintedPanel(panelImg, playerColor) {
+  const w = panelImg.naturalWidth;
+  const h = panelImg.naturalHeight;
+  const offscreen = document.createElement('canvas');
+  offscreen.width = w;
+  offscreen.height = h;
+  const octx = offscreen.getContext('2d');
+
+  // Dessiner l'image originale
+  octx.drawImage(panelImg, 0, 0);
+  const imageData = octx.getImageData(0, 0, w, h);
+  const data = imageData.data;
+
+  // Parser la couleur du joueur
+  const pc = parseColor(playerColor);
+
+  // Remplacer les pixels blancs/clairs par la couleur du joueur
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+    if (a < 10) continue; // pixel transparent, ignorer
+
+    // Detecter les pixels blancs/clairs (luminosite > 200 sur les 3 canaux)
+    if (r > 200 && g > 200 && b > 200) {
+      // Teinter : interpoler entre blanc original et couleur joueur
+      const brightness = (r + g + b) / (3 * 255); // 0..1
+      data[i] = Math.floor(pc.r * brightness);
+      data[i + 1] = Math.floor(pc.g * brightness);
+      data[i + 2] = Math.floor(pc.b * brightness);
+    }
+  }
+
+  octx.putImageData(imageData, 0, 0);
+  return offscreen;
+}
+
+function parseColor(hex) {
+  if (hex.startsWith('#')) hex = hex.slice(1);
+  if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+  return {
+    r: parseInt(hex.substring(0, 2), 16),
+    g: parseInt(hex.substring(2, 4), 16),
+    b: parseInt(hex.substring(4, 6), 16),
+  };
 }
 
 export class Renderer {
@@ -44,11 +105,18 @@ export class Renderer {
     this.boardCols = 0;
     this._lastRenderArgs = null;
 
-    // Images precharges
+    // Images prechargees
     this.tileImages = {};
     this.diceImage = null;
     this.teleporterImages = { horizontal: null, vertical: null };
+    this.coloredPanels = {}; // { "1": Image, "2": Image, ... }
     this.imagesLoaded = false;
+
+    // Cache des panels teintes : cle = "panelIndex_playerColor" -> canvas
+    this.tintedPanelCache = {};
+
+    // Mapping zone -> indice de panel colore
+    this.zonePanelMap = {}; // { "A": 1, "B": 5, ... }
 
     this.resize();
     window.addEventListener('resize', () => {
@@ -74,12 +142,53 @@ export class Renderer {
     this.diceImage = dice;
     this.teleporterImages.horizontal = hTele;
     this.teleporterImages.vertical = vTele;
+
+    // Charger les 16 panels colores
+    const panelPromises = [];
+    for (let i = 1; i <= COLORED_PANEL_COUNT; i++) {
+      panelPromises.push(loadImage(`images/coloredCommandPanel/${i}.png`));
+    }
+    const panelResults = await Promise.all(panelPromises);
+    for (let i = 0; i < panelResults.length; i++) {
+      this.coloredPanels[i + 1] = panelResults[i];
+    }
+
     this.imagesLoaded = true;
 
     // Re-render si des donnees sont deja en attente
     if (this._lastRenderArgs) {
       this.render(...this._lastRenderArgs);
     }
+  }
+
+  // Configure le mapping zone -> panel colore pour le plateau courant
+  setupZonePanelMap(zones) {
+    this.zonePanelMap = {};
+    this.tintedPanelCache = {}; // Reset cache quand on change de plateau
+    if (!zones || zones.length === 0) return;
+
+    const indices = getZonePanelIndices(zones.length);
+    for (let i = 0; i < zones.length; i++) {
+      this.zonePanelMap[zones[i].id] = indices[i];
+    }
+  }
+
+  // Obtenir le panel colore (teinté ou non) pour une case
+  getCommandPanelImage(tile, ownerPlayer) {
+    const panelIndex = tile.zone ? this.zonePanelMap[tile.zone] : null;
+    const baseImg = panelIndex ? this.coloredPanels[panelIndex] : this.tileImages[TileType.NORMAL];
+
+    if (!baseImg) return this.tileImages[TileType.NORMAL];
+
+    // Si pas de proprietaire, retourner l'image de base (centre blanc)
+    if (!ownerPlayer) return baseImg;
+
+    // Creer/recuperer la version teintee
+    const cacheKey = `${panelIndex || 'default'}_${ownerPlayer.color}`;
+    if (!this.tintedPanelCache[cacheKey]) {
+      this.tintedPanelCache[cacheKey] = createTintedPanel(baseImg, ownerPlayer.color);
+    }
+    return this.tintedPanelCache[cacheKey];
   }
 
   resize() {
@@ -118,8 +227,13 @@ export class Renderer {
     this._lastRenderArgs = [boardData, players, currentPlayerId, animState];
     if (!this.imagesLoaded) return;
 
-    const { tiles, links, rows, cols } = boardData;
+    const { tiles, links, rows, cols, zones } = boardData;
     const ctx = this.ctx;
+
+    // Setup zone mapping au premier render
+    if (zones && Object.keys(this.zonePanelMap).length === 0) {
+      this.setupZonePanelMap(zones);
+    }
 
     this.updateLayout(rows, cols);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -201,30 +315,18 @@ export class Renderer {
       ? players.find(p => p.id === tile.owner)
       : null;
 
-    // Fond blanc pour les cases commande
     if (tile.type === TileType.NORMAL) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(x - half, y - half, this.tileSize, this.tileSize);
-    }
-
-    // Image de la case
-    const img = this.tileImages[tile.type];
-    if (img) {
-      ctx.drawImage(img, x - half, y - half, this.tileSize, this.tileSize);
-    }
-
-    // Surcouche pour case possedee
-    if (tile.type === TileType.NORMAL && ownerPlayer) {
-      const r = 5;
-      ctx.beginPath();
-      ctx.roundRect(x - half, y - half, this.tileSize, this.tileSize, r);
-      ctx.fillStyle = ownerPlayer.color;
-      ctx.globalAlpha = 0.35;
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.strokeStyle = ownerPlayer.color;
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
+      // Case commande : utiliser le panel colore de la zone
+      const panelImg = this.getCommandPanelImage(tile, ownerPlayer);
+      if (panelImg) {
+        ctx.drawImage(panelImg, x - half, y - half, this.tileSize, this.tileSize);
+      }
+    } else {
+      // Autres types de cases : image standard
+      const img = this.tileImages[tile.type];
+      if (img) {
+        ctx.drawImage(img, x - half, y - half, this.tileSize, this.tileSize);
+      }
     }
 
     // Dice recouvre la case damage
