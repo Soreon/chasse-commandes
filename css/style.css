@@ -244,7 +244,8 @@ body {
 }
 .card.type-attack { border-left: 3px solid var(--accent-red); }
 .card.type-magic { border-left: 3px solid #a040ff; }
-.card.type-defense { border-left: 3px solid var(--accent-blue); }
+.card.type-misc { border-left: 3px solid var(--accent-blue); }
+.card.type-joker { border-left: 3px solid #ffd700; background: linear-gradient(135deg, var(--surface-2), #3a3520); }
 
 /* Action Panel */
 #action-panel {
