@@ -47,51 +47,6 @@ function loadImage(src) {
   });
 }
 
-// Cree une version teintee d'un panel : remplace les pixels blancs/clairs par playerColor
-function createTintedPanel(panelImg, playerColor) {
-  const w = panelImg.naturalWidth;
-  const h = panelImg.naturalHeight;
-  const offscreen = document.createElement('canvas');
-  offscreen.width = w;
-  offscreen.height = h;
-  const octx = offscreen.getContext('2d');
-
-  // Dessiner l'image originale
-  octx.drawImage(panelImg, 0, 0);
-  const imageData = octx.getImageData(0, 0, w, h);
-  const data = imageData.data;
-
-  // Parser la couleur du joueur
-  const pc = parseColor(playerColor);
-
-  // Remplacer les pixels blancs/clairs par la couleur du joueur
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-    if (a < 10) continue; // pixel transparent, ignorer
-
-    // Detecter les pixels blancs/clairs (luminosite > 200 sur les 3 canaux)
-    if (r > 200 && g > 200 && b > 200) {
-      // Teinter : interpoler entre blanc original et couleur joueur
-      const brightness = (r + g + b) / (3 * 255); // 0..1
-      data[i] = Math.floor(pc.r * brightness);
-      data[i + 1] = Math.floor(pc.g * brightness);
-      data[i + 2] = Math.floor(pc.b * brightness);
-    }
-  }
-
-  octx.putImageData(imageData, 0, 0);
-  return offscreen;
-}
-
-function parseColor(hex) {
-  if (hex.startsWith('#')) hex = hex.slice(1);
-  if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
-  return {
-    r: parseInt(hex.substring(0, 2), 16),
-    g: parseInt(hex.substring(2, 4), 16),
-    b: parseInt(hex.substring(4, 6), 16),
-  };
-}
 
 export class Renderer {
   constructor(canvas) {
@@ -111,9 +66,6 @@ export class Renderer {
     this.teleporterImages = { horizontal: null, vertical: null };
     this.coloredPanels = {}; // { "1": Image, "2": Image, ... }
     this.imagesLoaded = false;
-
-    // Cache des panels teintes : cle = "panelIndex_playerColor" -> canvas
-    this.tintedPanelCache = {};
 
     // Mapping zone -> indice de panel colore
     this.zonePanelMap = {}; // { "A": 1, "B": 5, ... }
@@ -164,7 +116,6 @@ export class Renderer {
   // Configure le mapping zone -> panel colore pour le plateau courant
   setupZonePanelMap(zones) {
     this.zonePanelMap = {};
-    this.tintedPanelCache = {}; // Reset cache quand on change de plateau
     if (!zones || zones.length === 0) return;
 
     const indices = getZonePanelIndices(zones.length);
@@ -173,22 +124,13 @@ export class Renderer {
     }
   }
 
-  // Obtenir le panel colore (teinté ou non) pour une case
-  getCommandPanelImage(tile, ownerPlayer) {
+  // Obtenir l'image du panel colore pour une case (selon sa zone)
+  getZonePanelImage(tile) {
     const panelIndex = tile.zone ? this.zonePanelMap[tile.zone] : null;
-    const baseImg = panelIndex ? this.coloredPanels[panelIndex] : this.tileImages[TileType.NORMAL];
-
-    if (!baseImg) return this.tileImages[TileType.NORMAL];
-
-    // Si pas de proprietaire, retourner l'image de base (centre blanc)
-    if (!ownerPlayer) return baseImg;
-
-    // Creer/recuperer la version teintee
-    const cacheKey = `${panelIndex || 'default'}_${ownerPlayer.color}`;
-    if (!this.tintedPanelCache[cacheKey]) {
-      this.tintedPanelCache[cacheKey] = createTintedPanel(baseImg, ownerPlayer.color);
+    if (panelIndex && this.coloredPanels[panelIndex]) {
+      return this.coloredPanels[panelIndex];
     }
-    return this.tintedPanelCache[cacheKey];
+    return this.tileImages[TileType.NORMAL];
   }
 
   resize() {
@@ -316,8 +258,12 @@ export class Renderer {
       : null;
 
     if (tile.type === TileType.NORMAL) {
-      // Case commande : utiliser le panel colore de la zone
-      const panelImg = this.getCommandPanelImage(tile, ownerPlayer);
+      // Fond derriere le panel : blanc si libre, couleur joueur si possedee
+      ctx.fillStyle = ownerPlayer ? ownerPlayer.color : '#ffffff';
+      ctx.fillRect(x - half, y - half, this.tileSize, this.tileSize);
+
+      // Panel colore par-dessus (cadre colore selon la zone, centre transparent)
+      const panelImg = this.getZonePanelImage(tile);
       if (panelImg) {
         ctx.drawImage(panelImg, x - half, y - half, this.tileSize, this.tileSize);
       }
