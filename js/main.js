@@ -55,9 +55,17 @@ document.getElementById('btn-play').addEventListener('click', () => {
   }
 
   const boardData = parseBoardJSON(gridData);
+  const spectator = document.getElementById('spectator-mode').checked;
 
   showScreen('game-screen');
   document.getElementById('goal-value').textContent = gpGoal.toLocaleString();
+
+  // Masquer la main et les actions en mode spectateur
+  if (spectator) {
+    document.getElementById('hud-bottom').style.display = 'none';
+  } else {
+    document.getElementById('hud-bottom').style.display = '';
+  }
 
   // Connecter les callbacks
   game.onUpdate = updateHUD;
@@ -66,7 +74,7 @@ document.getElementById('btn-play').addEventListener('click', () => {
   game.onDirectionChoice = showDirectionChoice;
   game.onVictory = showVictory;
 
-  game.init(playerName, opponentCount, gpGoal, boardData);
+  game.init(playerName, opponentCount, gpGoal, boardData, spectator);
 });
 
 // === Selection de cartes dans la main ===

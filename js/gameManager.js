@@ -33,17 +33,25 @@ export class GameManager {
   }
 
   // Initialise une nouvelle partie
-  init(playerName, opponentCount, gpGoal, boardData) {
+  init(playerName, opponentCount, gpGoal, boardData, spectator = false) {
     this.gpGoal = gpGoal;
+    this.spectator = spectator;
     this.board = boardData.tiles;
     this.boardData = boardData;
     this.startTileId = boardData.startTileId;
 
     // Creer les joueurs
     this.players = [];
-    this.players.push(createPlayer(0, playerName, true, PLAYER_COLORS[0]));
-    for (let i = 0; i < opponentCount; i++) {
-      this.players.push(createPlayer(i + 1, AI_NAMES[i] || `IA ${i + 1}`, false, PLAYER_COLORS[i + 1]));
+    if (spectator) {
+      const totalPlayers = opponentCount + 1;
+      for (let i = 0; i < totalPlayers; i++) {
+        this.players.push(createPlayer(i, AI_NAMES[i] || `IA ${i + 1}`, false, PLAYER_COLORS[i]));
+      }
+    } else {
+      this.players.push(createPlayer(0, playerName, true, PLAYER_COLORS[0]));
+      for (let i = 0; i < opponentCount; i++) {
+        this.players.push(createPlayer(i + 1, AI_NAMES[i] || `IA ${i + 1}`, false, PLAYER_COLORS[i + 1]));
+      }
     }
     // Positionner tous les joueurs sur la case depart
     for (const p of this.players) {
