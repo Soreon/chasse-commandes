@@ -526,13 +526,16 @@ function showHandSelection() {
   for (const handDef of availableHands) {
     const el = document.createElement('button');
     el.className = 'overlay-btn';
-    el.style.cssText = 'text-align:left;padding:8px 12px';
+    el.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 12px;text-align:left';
 
-    const reqText = handDef.requiredCards
-      .map(r => `${r.count}x ${CARD_TYPE_LABELS[r.type]}`)
+    const reqIcons = handDef.requiredCards
+      .map(r => {
+        const img = `<img src="${CARD_TYPE_IMAGES[r.type]}" alt="${r.type}" style="width:16px;height:16px;vertical-align:middle">`;
+        return img.repeat(r.count);
+      })
       .join(' + ');
 
-    el.innerHTML = `<strong>${handDef.name}</strong> <small>(${reqText})</small><br><small>${handDef.description}</small>`;
+    el.innerHTML = `<div><strong>${handDef.name}</strong><br><small>${handDef.description}</small></div><span style="display:flex;gap:2px;align-items:center;flex-shrink:0;margin-left:10px">${reqIcons}</span>`;
 
     el.addEventListener('click', () => {
       if (handDef.needsTarget) {
