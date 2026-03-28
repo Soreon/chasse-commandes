@@ -84,6 +84,12 @@ const CARD_TYPE_LABELS = {
   [CardType.MISC]: 'Divers',
   [CardType.JOKER]: 'Joker',
 };
+const CARD_TYPE_IMAGES = {
+  [CardType.ATTACK]: 'images/attackCard.png',
+  [CardType.MAGIC]: 'images/magicCard.png',
+  [CardType.MISC]: 'images/miscCard.png',
+  [CardType.JOKER]: 'images/jokerCard.png',
+};
 
 // === Affichage de la main ===
 
@@ -96,6 +102,7 @@ function renderHand(player) {
     el.className = `card type-${card.type}`;
     el.dataset.instanceId = card.instanceId;
     el.innerHTML = `
+      <img class="card-icon" src="${CARD_TYPE_IMAGES[card.type]}" alt="${card.type}">
       <div class="card-name">${card.name}</div>
       <div class="card-value">${card.value}</div>
       <div class="card-type">${CARD_TYPE_LABELS[card.type] || card.type}</div>
@@ -244,7 +251,7 @@ function showOverlay(type, tile, player, board, callback) {
       el.className = `card type-${card.type}`;
       el.style.width = '60px';
       el.style.height = '80px';
-      el.innerHTML = `<div class="card-name">${card.name}</div><div class="card-value">${card.value}</div>`;
+      el.innerHTML = `<img class="card-icon" src="${CARD_TYPE_IMAGES[card.type]}" alt="${card.type}"><div class="card-name">${card.name}</div><div class="card-value">${card.value}</div>`;
       el.addEventListener('click', () => {
         cardsContainer.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
         el.classList.add('selected');
