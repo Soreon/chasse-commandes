@@ -562,3 +562,175 @@ body {
 .final-score-row .rank { color: var(--accent-gold); width: 30px; }
 .final-score-row .name { flex: 1; }
 .final-score-row .score { color: var(--accent-gold); font-weight: 600; }
+
+/* === Map Builder === */
+
+#builder-screen {
+  flex-direction: row;
+  background: var(--bg-dark);
+}
+
+.builder-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.builder-sidebar {
+  width: 260px;
+  min-width: 260px;
+  padding: 16px;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.builder-sidebar h2 {
+  color: var(--accent-gold);
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.builder-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.builder-field label {
+  color: #aaa;
+  font-size: 12px;
+}
+.builder-field select,
+.builder-field input[type="number"] {
+  background: var(--bg-dark);
+  color: #fff;
+  border: 1px solid var(--border-color);
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.builder-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.builder-buttons .menu-btn.small {
+  font-size: 12px;
+  padding: 5px 10px;
+  flex: 1;
+}
+
+.builder-preview {
+  width: 48px;
+  height: 48px;
+  background-size: cover;
+  image-rendering: pixelated;
+  background-repeat: no-repeat;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  margin-top: 4px;
+}
+
+.builder-shift-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 30px);
+  grid-template-rows: repeat(3, 30px);
+  gap: 2px;
+  justify-content: center;
+}
+.shift-btn {
+  background: var(--bg-dark);
+  color: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.shift-btn:hover { background: #2a2e45; }
+
+.builder-status {
+  color: var(--accent-blue);
+  font-size: 12px;
+  min-height: 18px;
+}
+
+/* Grille de l'editeur */
+.builder-grid-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+}
+
+.builder-grid {
+  --builder-grid-size: 10;
+  display: grid;
+  grid-template-columns: repeat(var(--builder-grid-size), 1fr);
+  grid-template-rows: repeat(var(--builder-grid-size), 1fr);
+  gap: 3px;
+  width: fit-content;
+  height: fit-content;
+}
+
+.builder-cell {
+  width: 48px;
+  height: 48px;
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  image-rendering: pixelated;
+  background-size: cover;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  position: relative;
+}
+.builder-cell:hover {
+  border-color: var(--accent-blue);
+}
+
+/* Zone indicator on command cells */
+.builder-cell[data-zone]::after {
+  content: attr(data-zone);
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 10px;
+  font-weight: bold;
+  color: #fff;
+  background: var(--zone-color, #666);
+  padding: 0 3px;
+  border-radius: 2px;
+  line-height: 14px;
+}
+
+/* Cell type images */
+.builder-cell.blueCheckpoint,
+.builder-preview.blueCheckpoint { background-image: url('../images/blueCheckpoint.png'); }
+.builder-cell.greenCheckpoint,
+.builder-preview.greenCheckpoint { background-image: url('../images/greenCheckpoint.png'); }
+.builder-cell.redCheckpoint,
+.builder-preview.redCheckpoint { background-image: url('../images/redCheckpoint.png'); }
+.builder-cell.yellowCheckpoint,
+.builder-preview.yellowCheckpoint { background-image: url('../images/yellowCheckpoint.png'); }
+.builder-cell.dice,
+.builder-preview.dice { background-image: url('../images/dice.png'); }
+.builder-cell.damagePanel,
+.builder-preview.damagePanel { background-image: url('../images/damagePanel.png'); }
+.builder-cell.horizontalTeleporter,
+.builder-preview.horizontalTeleporter { background-image: url('../images/horizontalTeleporter.png'); background-size: contain; background-position: center; }
+.builder-cell.verticalTeleporter,
+.builder-preview.verticalTeleporter { background-image: url('../images/verticalTeleporter.png'); background-size: contain; background-position: center; }
+.builder-cell.bonusPanel,
+.builder-preview.bonusPanel { background-image: url('../images/bonusPanel.png'); }
+.builder-cell.commandPanel,
+.builder-preview.commandPanel { background-image: url('../images/commandPanel.png'); }
+.builder-cell.gpBoosterPanel,
+.builder-preview.gpBoosterPanel { background-image: url('../images/gpBoosterPanel.png'); }
+.builder-cell.specialPanel,
+.builder-preview.specialPanel { background-image: url('../images/specialPanel.png'); }
+.builder-cell.startPanel,
+.builder-preview.startPanel { background-image: url('../images/startPanel.png'); }

@@ -14,6 +14,7 @@
       <h1 class="game-title">Command Board</h1>
       <div class="menu-options">
         <button id="btn-start" class="menu-btn">Nouvelle Partie</button>
+        <button id="btn-builder" class="menu-btn">Editeur de Plateaux</button>
         <button id="btn-rules" class="menu-btn">Regles</button>
       </div>
     </div>
@@ -141,6 +142,94 @@
       <div id="winner-name"></div>
       <div id="final-scores"></div>
       <button id="btn-back-to-menu" class="menu-btn">Retour au menu</button>
+    </div>
+  </div>
+
+  <!-- Ecran editeur de plateaux -->
+  <div id="builder-screen" class="screen">
+    <div class="builder-layout">
+      <!-- Panneau lateral gauche -->
+      <div class="builder-sidebar">
+        <h2>Editeur</h2>
+
+        <div class="builder-field">
+          <label>Element :</label>
+          <select id="builder-element">
+            <option selected value="empty">Vide</option>
+            <optgroup label="Checkpoints">
+              <option value="blueCheckpoint">Checkpoint Bleu</option>
+              <option value="greenCheckpoint">Checkpoint Vert</option>
+              <option value="redCheckpoint">Checkpoint Rouge</option>
+              <option value="yellowCheckpoint">Checkpoint Jaune</option>
+            </optgroup>
+            <optgroup label="Piste Damage">
+              <option value="dice">Dice (source)</option>
+              <option value="damagePanel">Damage Panel</option>
+            </optgroup>
+            <optgroup label="Teleporteurs">
+              <option value="horizontalTeleporter">Teleporteur Horizontal</option>
+              <option value="verticalTeleporter">Teleporteur Vertical</option>
+            </optgroup>
+            <option value="bonusPanel">Bonus</option>
+            <option value="commandPanel">Commande</option>
+            <option value="gpBoosterPanel">GP Booster</option>
+            <option value="specialPanel">Evenement</option>
+            <option value="startPanel">Depart</option>
+          </select>
+          <div id="builder-preview" class="builder-preview"></div>
+        </div>
+
+        <div class="builder-field">
+          <label>Zone (commandes) :</label>
+          <select id="builder-zone">
+            <option value="">Aucune</option>
+            <option value="A">Zone A</option>
+            <option value="B">Zone B</option>
+            <option value="C">Zone C</option>
+            <option value="D">Zone D</option>
+            <option value="E">Zone E</option>
+            <option value="F">Zone F</option>
+          </select>
+        </div>
+
+        <div class="builder-field">
+          <label>Taille :</label>
+          <input id="builder-grid-size" type="number" min="3" max="30" value="10">
+        </div>
+
+        <div class="builder-field builder-buttons">
+          <button id="builder-save" class="menu-btn small">Sauvegarder</button>
+          <button id="builder-reset" class="menu-btn small secondary">Reinitialiser</button>
+          <button id="builder-validate" class="menu-btn small">Valider</button>
+        </div>
+
+        <div class="builder-field">
+          <label>Plateaux :</label>
+          <select id="builder-boards-list"></select>
+          <div class="builder-buttons">
+            <button id="builder-load" class="menu-btn small" disabled>Charger</button>
+            <button id="builder-delete" class="menu-btn small secondary" disabled>Supprimer</button>
+          </div>
+        </div>
+
+        <div class="builder-field">
+          <label>Decaler :</label>
+          <div class="builder-shift-grid">
+            <span></span><button id="builder-shift-up" class="shift-btn">&#9650;</button><span></span>
+            <button id="builder-shift-left" class="shift-btn">&#9664;</button><span></span><button id="builder-shift-right" class="shift-btn">&#9654;</button>
+            <span></span><button id="builder-shift-down" class="shift-btn">&#9660;</button><span></span>
+          </div>
+        </div>
+
+        <div id="builder-status" class="builder-status"></div>
+
+        <button id="btn-back-builder" class="menu-btn secondary">Retour au menu</button>
+      </div>
+
+      <!-- Zone de la grille -->
+      <div class="builder-grid-area">
+        <div id="builder-grid" class="builder-grid"></div>
+      </div>
     </div>
   </div>
 

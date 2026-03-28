@@ -4,24 +4,42 @@ import { GameManager } from './gameManager.js';
 import { CardType, getAvailableHands, canPlaceOnTile } from './cards.js';
 import { getBuyoutCost, getUpgradeCost, parseBoardJSON } from './board.js';
 import { calculateNetWorth, transferGP, addGP } from './player.js';
+import { MapBuilder } from './mapBuilder.js';
 
 const game = new GameManager();
+const builder = new MapBuilder();
+let builderInitialized = false;
 
 // === Chargement des plateaux depuis boards.json ===
 let boardsData = {};
+
+function populateBoardSelect() {
+  const select = document.getElementById('board-select');
+  select.innerHTML = '';
+
+  // Custom boards first
+  const custom = MapBuilder.getCustomBoards();
+  for (const name of Object.keys(custom)) {
+    const opt = document.createElement('option');
+    opt.value = `custom:${name}`;
+    opt.textContent = `Custom: ${name}`;
+    select.appendChild(opt);
+  }
+
+  // Preset boards
+  for (const name of Object.keys(boardsData).reverse()) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    select.appendChild(opt);
+  }
+}
 
 async function loadBoards() {
   try {
     const resp = await fetch('boards.json');
     boardsData = await resp.json();
-    const select = document.getElementById('board-select');
-    select.innerHTML = '';
-    for (const name of Object.keys(boardsData).reverse()) {
-      const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name;
-      select.appendChild(opt);
-    }
+    populateBoardSelect();
   } catch (e) {
     console.error('Erreur chargement boards.json:', e);
   }
@@ -35,20 +53,38 @@ function showScreen(screenId) {
   document.getElementById(screenId).classList.add('active');
 }
 
-document.getElementById('btn-start').addEventListener('click', () => showScreen('setup-screen'));
+document.getElementById('btn-start').addEventListener('click', () => { populateBoardSelect(); showScreen('setup-screen'); });
 document.getElementById('btn-rules').addEventListener('click', () => showScreen('rules-screen'));
-document.getElementById('btn-back-menu').addEventListener('click', () => showScreen('main-menu'));
+document.getElementById('btn-builder').addEventListener('click', () => {
+  if (!builderInitialized) {
+    builder.init(document.getElementById('builder-screen'), boardsData);
+    builderInitialized = true;
+  }
+  builder.activate();
+  showScreen('builder-screen');
+});
+document.getElementById('btn-back-menu').addEventListener('click', () => { populateBoardSelect(); showScreen('main-menu'); });
 document.getElementById('btn-back-rules').addEventListener('click', () => showScreen('main-menu'));
 document.getElementById('btn-back-to-menu').addEventListener('click', () => showScreen('main-menu'));
+document.getElementById('btn-back-builder').addEventListener('click', () => { builder.deactivate(); populateBoardSelect(); showScreen('main-menu'); });
 
 // === Lancement de partie ===
 document.getElementById('btn-play').addEventListener('click', () => {
   const playerName = document.getElementById('player-name').value.trim() || 'Ventus';
   const opponentCount = parseInt(document.getElementById('opponent-count').value);
   const gpGoal = parseInt(document.getElementById('gp-goal').value);
-  const boardName = document.getElementById('board-select').value;
+  const boardSelection = document.getElementById('board-select').value;
 
-  const boardEntry = boardsData[boardName];
+  let boardEntry, boardName;
+  if (boardSelection.startsWith('custom:')) {
+    boardName = boardSelection.substring(7);
+    const custom = MapBuilder.getCustomBoards();
+    boardEntry = custom[boardName];
+  } else {
+    boardName = boardSelection;
+    boardEntry = boardsData[boardName];
+  }
+
   if (!boardEntry) {
     alert('Plateau introuvable !');
     return;
