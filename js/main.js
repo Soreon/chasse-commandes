@@ -593,7 +593,7 @@ function showDirectionChoice(moves, callback) {
   const buttons = document.getElementById('direction-buttons');
   buttons.innerHTML = '';
 
-  const dirNames = { north: 'Nord', south: 'Sud', east: 'Est', west: 'Ouest' };
+  const dirNames = { north: 'Haut', south: 'Bas', east: 'Droite', west: 'Gauche' };
   const typeNames = {
     start: 'Depart', bonus: 'Bonus', damage: 'Danger',
     joker: 'Joker', event: 'Event', normal: '', booster: 'Booster',
