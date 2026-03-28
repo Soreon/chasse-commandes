@@ -440,6 +440,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  justify-content: flex-end;
+  min-height: 100%;
 }
 .log-entry {
   background: rgba(20, 24, 41, 0.85);

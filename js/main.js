@@ -211,7 +211,8 @@ function addLogEntry(message, type) {
   entry.className = `log-entry${type ? ' ' + type : ''}`;
   entry.textContent = message;
   container.appendChild(entry);
-  container.scrollTop = container.scrollHeight;
+  const log = document.getElementById('message-log');
+  log.scrollTop = log.scrollHeight;
 
   // Limiter a 50 entrees
   while (container.children.length > 50) {
