@@ -400,6 +400,14 @@ export class Renderer {
     }
   }
 
+  // Dessine l'image dice.png centree sur une position
+  drawDiceAt(x, y) {
+    if (!this.diceImage) return;
+    const size = this.tileSize * 0.7;
+    const half = size / 2;
+    this.ctx.drawImage(this.diceImage, x - half, y - half, size, size);
+  }
+
   // Dessiner un joueur sur sa case
   drawPlayer(player, tiles, players, currentPlayerId) {
     const ctx = this.ctx;
@@ -414,6 +422,11 @@ export class Renderer {
 
     const px = x + offset.dx;
     const py = y + offset.dy;
+
+    // Prize Cube : dessiner l'image dice sous le joueur
+    if (player.prizeCube) {
+      this.drawDiceAt(px, py);
+    }
 
     // Halo pour le joueur actif
     if (player.id === currentPlayerId) {
@@ -441,12 +454,6 @@ export class Renderer {
     ctx.fillText(player.name[0], px, py);
 
     // Indicateurs d'etat
-    if (player.prizeCube) {
-      ctx.fillStyle = '#ffd700';
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('🎁', px, py - PLAYER_RADIUS - 6);
-    }
     if (player.stunned) {
       ctx.fillStyle = '#ff0';
       ctx.font = '12px sans-serif';
@@ -467,12 +474,17 @@ export class Renderer {
   // Animation de deplacement
   drawMovingPlayer(animState, tiles) {
     const ctx = this.ctx;
-    const { fromTileId, toTileId, progress, color, name } = animState;
+    const { fromTileId, toTileId, progress, color, name, hasPrizeCube } = animState;
     const from = this.getTileCenter(tiles[fromTileId]);
     const to = this.getTileCenter(tiles[toTileId]);
 
     const x = from.x + (to.x - from.x) * progress;
     const y = from.y + (to.y - from.y) * progress;
+
+    // Dessiner le Prize Cube sous le joueur s'il en chevauche un
+    if (hasPrizeCube) {
+      this.drawDiceAt(x, y);
+    }
 
     ctx.beginPath();
     ctx.arc(x, y, PLAYER_RADIUS + 2, 0, Math.PI * 2);

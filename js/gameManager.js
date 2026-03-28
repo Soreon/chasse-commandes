@@ -502,6 +502,7 @@ export class GameManager {
           progress,
           color: player.color,
           name: player.name,
+          hasPrizeCube: !!player.prizeCube,
         };
         this.render();
 
