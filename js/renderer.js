@@ -453,21 +453,27 @@ export class Renderer {
     ctx.textBaseline = 'middle';
     ctx.fillText(player.name[0], px, py);
 
-    // Indicateurs d'etat
-    if (player.stunned) {
-      ctx.fillStyle = '#ff0';
-      ctx.font = '12px sans-serif';
-      ctx.fillText('*', px + PLAYER_RADIUS, py - PLAYER_RADIUS);
-    }
-    if (player.justiceTurns > 0) {
-      ctx.fillStyle = '#0f0';
-      ctx.font = '10px sans-serif';
-      ctx.fillText(`J${player.justiceTurns}`, px - PLAYER_RADIUS - 10, py);
-    }
-    if (player.darkTurns > 0) {
-      ctx.fillStyle = '#f00';
-      ctx.font = '10px sans-serif';
-      ctx.fillText(`D${player.darkTurns}`, px - PLAYER_RADIUS - 10, py);
+    // Indicateurs d'etat (badge avec fond)
+    const badges = [];
+    if (player.stunned) badges.push({ text: 'STUN', bg: '#cc9900', fg: '#000' });
+    if (player.justiceTurns > 0) badges.push({ text: `J${player.justiceTurns}`, bg: '#0a6e0a', fg: '#4cff8d' });
+    if (player.darkTurns > 0) badges.push({ text: `D${player.darkTurns}`, bg: '#6e0a0a', fg: '#ff6b6b' });
+
+    for (let i = 0; i < badges.length; i++) {
+      const b = badges[i];
+      const bx = px;
+      const by = py - PLAYER_RADIUS - 8 - i * 16;
+      ctx.font = 'bold 11px sans-serif';
+      const tw = ctx.measureText(b.text).width;
+      const padX = 3, padY = 2;
+      ctx.fillStyle = b.bg;
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(bx - tw / 2 - padX, by - 6 - padY, tw + padX * 2, 12 + padY * 2);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = b.fg;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(b.text, bx, by);
     }
   }
 

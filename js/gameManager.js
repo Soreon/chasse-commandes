@@ -352,7 +352,6 @@ export class GameManager {
     // Le cavalier precedent tombe et subit des degats
     previousRider.prizeCube = null;
     this.log(`${thief.name} vole le Prize Cube a ${previousRider.name} !`, 'important');
-    this.showNotif('🏴‍☠️', `${thief.name} vole le Prize Cube !`, 'negative');
     this.applyDamagePenalty(previousRider);
 
     // Le voleur monte sur le cube
@@ -842,6 +841,7 @@ export class GameManager {
     updateTileValue(this.board, tile.id);
     updateAllTolls(this.board);
     this.log(`${player.name} ameliore la case ${tile.id} au niveau ${tile.level} pour ${cost} GP !`);
+    this.showNotif('⬆️', `Niveau ${tile.level} ! -${cost} GP`, 'info');
     this.render();
   }
 
