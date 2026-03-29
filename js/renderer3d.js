@@ -367,11 +367,22 @@ export class Renderer3D {
             token.style.boxShadow = `0 0 10px 3px ${player.color}`;
           }
 
-          // Stack offset for multiple players on same tile
-          const ox = (idx % 2) * 20 - 10;
-          const oy = Math.floor(idx / 2) * 20 - 10;
+          // Stack offset for multiple players on same tile (centered when alone)
+          const count = tilePlayers.length;
+          let ox = 0, oy = 0;
+          if (count > 1) {
+            ox = (idx % 2) * 20 - 10;
+            oy = Math.floor(idx / 2) * 20 - 10;
+          }
           token.style.left = `calc(50% + ${ox}px - 12px)`;
           token.style.top = `calc(50% + ${oy}px - 12px)`;
+
+          // If player rides a prize cube, place token on the dice container
+          const riddenDc = player.prizeCube && this.diceContainers[player.prizeCube.cubeId];
+          if (riddenDc) {
+            const diceZplus = riddenDc.element.querySelector('.face.Zplus');
+            if (diceZplus) { diceZplus.appendChild(token); return; }
+          }
 
           const zplus = cellEl.querySelector('.face.Zplus');
           if (zplus) zplus.appendChild(token);
