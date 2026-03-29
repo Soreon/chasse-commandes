@@ -389,11 +389,13 @@ export class Renderer3D {
           token.style.left = `calc(50% + ${ox}px)`;
           token.style.top = `calc(50% + ${oy}px)`;
 
-          // If player rides a prize cube, place token on the dice container
+          // If player rides a prize cube, place token on the container (not the rotating element)
           const riddenDc = player.prizeCube && this.diceContainers[player.prizeCube.cubeId];
           if (riddenDc) {
-            const diceZplus = riddenDc.element.querySelector('.face.Zplus');
-            if (diceZplus) { diceZplus.appendChild(token); return; }
+            token.style.left = 'calc(var(--cell-size) / 2)';
+            token.style.top = 'calc(var(--cell-size) / 2)';
+            riddenDc.container.appendChild(token);
+            return;
           }
 
           const zplus = cellEl.querySelector('.face.Zplus');
