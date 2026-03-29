@@ -7,7 +7,7 @@ import { TileType, updateTileValue, updateAllTolls, getBuyoutCost, getUpgradeCos
 import { rollDie, CardType, createCard, drawRandomCards, HandType, HAND_DEFINITIONS, getAvailableHands, selectCardsForHand, canPlaceOnTile } from './cards.js';
 import { createPlayer, calculateNetWorth, addGP, transferGP, refillHand, removeCardFromHand, allCheckpointsVisited, resetCheckpoints, PLAYER_COLORS, AI_NAMES } from './player.js';
 import { Renderer } from './renderer.js';
-import { Renderer3D } from './renderer3d.js';
+import { Renderer3D } from './renderer3dThree.js';
 import { AI } from './ai.js';
 
 export class GameManager {
