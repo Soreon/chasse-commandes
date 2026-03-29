@@ -3,6 +3,7 @@
 :root {
   --cell-size: 80px;
   --grid-gap: 8px;
+  --move-duration: 0.4s;
 }
 
 #board-3d-wrapper {
@@ -42,6 +43,7 @@
   grid-gap: var(--grid-gap);
   margin: 0 auto;
   transform-style: preserve-3d;
+  position: relative;
 }
 
 /* === Cellule 3D === */
@@ -114,6 +116,7 @@
 
 .board-3d .cell3d .face.Zplus {
   /* Top face - default position */
+  transform-style: preserve-3d;
 }
 
 /* === Shading des voisins === */
@@ -207,8 +210,8 @@
 }
 
 @keyframes cell3d-pulse {
-  0% { filter: brightness(1); }
-  100% { filter: brightness(1.2); }
+  0% { box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0); }
+  100% { box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.15); }
 }
 
 /* === Bonus panel top face === */
@@ -232,36 +235,88 @@
   z-index: 2;
 }
 
-/* === Player tokens === */
+/* === Player tokens (inverted 3D pyramid) === */
+/* Geometry: sin(30°) = 0.5 = pyr-base / pyr-height → faces close perfectly */
 
 .board-3d .player-token-3d {
+  --pyr-base: 10px;
+  --pyr-height: 20px;
   position: absolute;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 2px solid #fff;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
   z-index: 10;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
   pointer-events: none;
+  animation: pyramid-float 1.5s ease-in-out infinite alternate;
 }
 
-/* === Prize Cube 3D (dice) === */
+@keyframes pyramid-float {
+  0% { transform: translateZ(30px) rotateX(90deg); }
+  100% { transform: translateZ(38px) rotateX(90deg); }
+}
 
-.board-3d .prize-cube-3d {
+.board-3d .player-token-3d .pyramid-face {
   position: absolute;
-  width: calc(var(--cell-size) * 0.6);
-  height: calc(var(--cell-size) * 0.6);
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) translateZ(2px);
-  z-index: 5;
+  left: calc(-1 * var(--pyr-base) - 1px);
+  width: 0;
+  height: 0;
+  border-left: calc(var(--pyr-base) + 1px) solid transparent;
+  border-right: calc(var(--pyr-base) + 1px) solid transparent;
+  border-bottom: var(--pyr-height) solid;
+  transform-origin: 50% 0%;
+}
+
+/* Shading: each face gets a different brightness to simulate lighting */
+.board-3d .player-token-3d .pf-0 { transform:                rotateX(30deg); filter: brightness(1.1); }
+.board-3d .player-token-3d .pf-1 { transform: rotateY(90deg)  rotateX(30deg); filter: brightness(0.85); }
+.board-3d .player-token-3d .pf-2 { transform: rotateY(180deg) rotateX(30deg); filter: brightness(0.7); }
+.board-3d .player-token-3d .pf-3 { transform: rotateY(270deg) rotateX(30deg); filter: brightness(0.95); }
+
+/* Square base at the open top of the inverted pyramid */
+.board-3d .player-token-3d .pyramid-base {
+  position: absolute;
+  width: calc(var(--pyr-base) * 2);
+  height: calc(var(--pyr-base) * 2);
+  left: calc(-1 * var(--pyr-base));
+  top: calc(-1 * var(--pyr-base));
+  transform: translateY(calc(var(--pyr-height) * 0.866)) rotateX(90deg);
+  filter: brightness(1.2);
+}
+
+/* === Prize Cube 3D (dice container + real 3D cube) === */
+
+.board-3d .dice-container-3d {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-style: preserve-3d;
+  z-index: 100;
   pointer-events: none;
+  transition: transform var(--move-duration) ease-out;
 }
-.board-3d .prize-cube-3d img {
-  width: 100%;
-  height: 100%;
-  image-rendering: pixelated;
+
+.board-3d .cell3d.t-dice {
+  --cell-image: url('../images/dice.png');
+  z-index: 1;
+  pointer-events: none;
+  width: var(--cell-size);
+  height: var(--cell-height);
+  position: absolute;
+  transform-style: preserve-3d;
 }
+
+/* Rolling animations */
+.board-3d .cell3d.t-dice.willRotateTowardsXMinus { transform-origin: 0 0 calc(-1 * var(--cell-size)); }
+.board-3d .cell3d.t-dice.rotatingTowardsXMinus { transition: transform var(--move-duration) ease; transform: translateX(var(--cell-size)) rotateY(-90deg); }
+
+.board-3d .cell3d.t-dice.willRotateTowardsXPlus { transform-origin: calc(var(--cell-size)) calc(var(--cell-size)) calc(-1 * var(--cell-size)); }
+.board-3d .cell3d.t-dice.rotatingTowardsXPlus { transition: transform var(--move-duration) ease; transform: translateX(calc(-1 * var(--cell-size))) rotateY(90deg); }
+
+.board-3d .cell3d.t-dice.willRotateTowardsYMinus { transform-origin: calc(var(--cell-size)) 0 calc(-1 * var(--cell-size)); }
+.board-3d .cell3d.t-dice.rotatingTowardsYMinus { transition: transform var(--move-duration) ease; transform: translateY(var(--cell-size)) rotateX(90deg); }
+
+.board-3d .cell3d.t-dice.willRotateTowardsYPlus { transform-origin: 0 calc(var(--cell-size)) calc(-1 * var(--cell-size)); }
+.board-3d .cell3d.t-dice.rotatingTowardsYPlus { transition: transform var(--move-duration) ease; transform: translateY(calc(-1 * var(--cell-size))) rotateX(-90deg); }
 
 /* === Level indicator === */
 

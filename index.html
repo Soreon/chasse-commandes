@@ -133,6 +133,20 @@
     <!-- Tooltip de case -->
     <div id="tile-tooltip" class="tile-tooltip hidden"></div>
 
+    <!-- Debug menu -->
+    <div id="debug-menu">
+      <button id="debug-toggle" title="Debug">&#9881;</button>
+      <div id="debug-panel" class="hidden">
+        <button id="debug-pause">&#9208; Pause</button>
+        <label>Inclinaison <span id="debug-tilt-val">60</span>°
+          <input id="debug-tilt" type="range" min="0" max="90" value="60">
+        </label>
+        <label>Rotation <span id="debug-pan-val">0</span>°
+          <input id="debug-pan" type="range" min="0" max="360" value="0">
+        </label>
+      </div>
+    </div>
+
   </div>
 
   <!-- Ecran de victoire -->

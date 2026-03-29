@@ -1,5 +1,8 @@
 // Gestionnaire principal du jeu - orchestre la boucle de jeu
 
+// Duree (ms) du deplacement d'une case a l'autre — utilise pour toutes les animations liees au mouvement
+export const MOVE_STEP_DURATION = 400;
+
 import { TileType, updateTileValue, updateAllTolls, getBuyoutCost, getUpgradeCost, isCheckpoint, getCheckpointColor, getAvailableMoves, CHECKPOINT_BONUS_GP, LAP_BONUS_GP, START_PASS_BONUS, START_STOP_BONUS, BASE_TILE_COST, countOwnedInZone, countTilesInZone, OPPOSITE_DIR } from './board.js';
 import { rollDie, CardType, createCard, drawRandomCards, HandType, HAND_DEFINITIONS, getAvailableHands, selectCardsForHand, canPlaceOnTile } from './cards.js';
 import { createPlayer, calculateNetWorth, addGP, transferGP, refillHand, removeCardFromHand, allCheckpointsVisited, resetCheckpoints, PLAYER_COLORS, AI_NAMES } from './player.js';
@@ -534,7 +537,7 @@ export class GameManager {
 
   animateMovement(fromTileId, toTileId, player) {
     return new Promise(resolve => {
-      const duration = 200; // ms
+      const duration = MOVE_STEP_DURATION;
       const start = performance.now();
 
       const animate = (now) => {
@@ -1481,8 +1484,18 @@ export class GameManager {
     this.roll();
   }
 
-  delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  pause() { this.paused = true; }
+  resume() {
+    this.paused = false;
+    if (this._pauseResolve) { this._pauseResolve(); this._pauseResolve = null; }
+  }
+  togglePause() { this.paused ? this.resume() : this.pause(); }
+
+  async delay(ms) {
+    await new Promise(resolve => setTimeout(resolve, ms));
+    if (this.paused) {
+      await new Promise(resolve => { this._pauseResolve = resolve; });
+    }
   }
 
   // === VICTOIRE ===

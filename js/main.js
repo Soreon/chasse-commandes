@@ -113,6 +113,30 @@ document.getElementById('btn-play').addEventListener('click', () => {
   game.init(playerName, opponentCount, gpGoal, boardData, spectator, boardName);
 });
 
+// === Debug menu ===
+document.getElementById('debug-toggle').addEventListener('click', () => {
+  document.getElementById('debug-panel').classList.toggle('hidden');
+});
+
+document.getElementById('debug-pause').addEventListener('click', (e) => {
+  game.togglePause();
+  const active = game.paused;
+  e.target.classList.toggle('active', active);
+  e.target.textContent = active ? '\u25B6 Reprendre' : '\u23F8 Pause';
+});
+
+document.getElementById('debug-tilt').addEventListener('input', (e) => {
+  const val = Number(e.target.value);
+  document.getElementById('debug-tilt-val').textContent = val;
+  if (game.renderer3d) game.renderer3d.setCameraTilt(val);
+});
+
+document.getElementById('debug-pan').addEventListener('input', (e) => {
+  const val = Number(e.target.value);
+  document.getElementById('debug-pan-val').textContent = val;
+  if (game.renderer3d) game.renderer3d.setCameraPan(val);
+});
+
 // === Noms des types de cartes ===
 const CARD_TYPE_LABELS = {
   [CardType.ATTACK]: 'Attaque',

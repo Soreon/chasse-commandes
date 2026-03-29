@@ -266,6 +266,9 @@ export class Renderer3D {
     this._updateCameraTransform();
   }
 
+  setCameraTilt(deg) { this.cameraTilt = deg; this._updateCameraTransform(); }
+  setCameraPan(deg) { this.cameraPan = deg; this._updateCameraTransform(); }
+
   _updateCameraTransform() {
     if (!this.view) return;
     this.view.style.transform =
@@ -361,11 +364,20 @@ export class Renderer3D {
         tilePlayers.forEach((player, idx) => {
           const token = document.createElement('div');
           token.className = 'player-token-3d';
-          token.style.backgroundColor = player.color;
+          const isCurrent = player.id === currentPlayerId;
+          if (isCurrent) token.classList.add('current');
 
-          if (player.id === currentPlayerId) {
-            token.style.boxShadow = `0 0 10px 3px ${player.color}`;
+          // 4 triangular faces + 1 base for the inverted pyramid
+          for (let i = 0; i < 4; i++) {
+            const face = document.createElement('div');
+            face.className = `pyramid-face pf-${i}`;
+            face.style.borderBottomColor = player.color;
+            token.appendChild(face);
           }
+          const base = document.createElement('div');
+          base.className = 'pyramid-base';
+          base.style.backgroundColor = player.color;
+          token.appendChild(base);
 
           // Stack offset for multiple players on same tile (centered when alone)
           const count = tilePlayers.length;
@@ -374,8 +386,8 @@ export class Renderer3D {
             ox = (idx % 2) * 20 - 10;
             oy = Math.floor(idx / 2) * 20 - 10;
           }
-          token.style.left = `calc(50% + ${ox}px - 12px)`;
-          token.style.top = `calc(50% + ${oy}px - 12px)`;
+          token.style.left = `calc(50% + ${ox}px)`;
+          token.style.top = `calc(50% + ${oy}px)`;
 
           // If player rides a prize cube, place token on the dice container
           const riddenDc = player.prizeCube && this.diceContainers[player.prizeCube.cubeId];
