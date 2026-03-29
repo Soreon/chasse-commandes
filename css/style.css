@@ -141,13 +141,19 @@ body {
 /* HUD Top */
 #hud-top {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 8px 16px;
+  padding: 8px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border-color);
   font-size: 0.95rem;
   z-index: 10;
+}
+#hud-info {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-left: 12px;
 }
 #turn-info { color: var(--text-secondary); }
 #turn-number { color: var(--accent-gold); font-weight: 700; }
@@ -737,10 +743,7 @@ body {
 
 /* === Debug Menu === */
 #debug-menu {
-  position: fixed;
-  top: 10px;
-  right: 10px;
-  z-index: 500;
+  position: relative;
 }
 #debug-toggle {
   background: var(--bg-panel);
@@ -754,6 +757,9 @@ body {
 }
 #debug-toggle:hover { color: var(--text-primary); }
 #debug-panel {
+  position: absolute;
+  left: 0;
+  top: 100%;
   margin-top: 6px;
   background: var(--bg-panel);
   border: 1px solid var(--border-color);
@@ -763,6 +769,7 @@ body {
   flex-direction: column;
   gap: 8px;
   min-width: 180px;
+  z-index: 500;
 }
 #debug-panel.hidden { display: none; }
 #debug-panel button {

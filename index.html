@@ -61,13 +61,28 @@
   <div id="game-screen" class="screen">
     <!-- HUD supérieur -->
     <div id="hud-top">
-      <div id="turn-info">Tour <span id="turn-number">1</span></div>
-      <div id="current-player-info">
-        <span id="current-player-name"></span> -
-        <span id="current-player-gp">0</span> GP
-        (Net: <span id="current-player-net">0</span>)
+      <!-- Debug menu -->
+      <div id="debug-menu">
+        <button id="debug-toggle" title="Debug">&#9881;</button>
+        <div id="debug-panel" class="hidden">
+          <button id="debug-pause">&#9208; Pause</button>
+          <label>Inclinaison <span id="debug-tilt-val">60</span>°
+            <input id="debug-tilt" type="range" min="0" max="90" value="60">
+          </label>
+          <label>Rotation <span id="debug-pan-val">0</span>°
+            <input id="debug-pan" type="range" min="0" max="360" value="0">
+          </label>
+        </div>
       </div>
-      <div id="gp-goal-display">Objectif : <span id="goal-value">7500</span> GP</div>
+      <div id="hud-info">
+        <div id="turn-info">Tour <span id="turn-number">1</span></div>
+        <div id="current-player-info">
+          <span id="current-player-name"></span> -
+          <span id="current-player-gp">0</span> GP
+          (Net: <span id="current-player-net">0</span>)
+        </div>
+        <div id="gp-goal-display">Objectif : <span id="goal-value">7500</span> GP</div>
+      </div>
     </div>
 
     <!-- Zone plateau -->
@@ -132,20 +147,6 @@
 
     <!-- Tooltip de case -->
     <div id="tile-tooltip" class="tile-tooltip hidden"></div>
-
-    <!-- Debug menu -->
-    <div id="debug-menu">
-      <button id="debug-toggle" title="Debug">&#9881;</button>
-      <div id="debug-panel" class="hidden">
-        <button id="debug-pause">&#9208; Pause</button>
-        <label>Inclinaison <span id="debug-tilt-val">60</span>°
-          <input id="debug-tilt" type="range" min="0" max="90" value="60">
-        </label>
-        <label>Rotation <span id="debug-pan-val">0</span>°
-          <input id="debug-pan" type="range" min="0" max="360" value="0">
-        </label>
-      </div>
-    </div>
 
   </div>
 
