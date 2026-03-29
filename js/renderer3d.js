@@ -1,6 +1,8 @@
 // Renderer 3D CSS - Vue principale du plateau
 // Genere un DOM 3D avec des cubes CSS (6 faces) pour chaque case
 
+import { MOVE_STEP_DURATION } from './gameManager.js';
+
 const COLORED_PANEL_COUNT = 16;
 
 function getZonePanelIndices(count) {
@@ -21,6 +23,7 @@ export class Renderer3D {
     this.board = null;       // .board-3d
     this.cellElements = {};  // { tileId: element }
     this.tilePositions = {}; // { tileId: { row, col } }
+    this.diceContainers = {}; // { cubeId: { container, element, tileId } }
 
     this.cameraTilt = 60;
     this.cameraPan = 0;
@@ -63,6 +66,7 @@ export class Renderer3D {
     this.cols = cols;
     this.cellElements = {};
     this.tilePositions = {};
+    this.diceContainers = {};
 
     // Store tile positions
     for (const tile of tiles) {
@@ -141,6 +145,23 @@ export class Renderer3D {
       }
     }
 
+    // Create initial dice for hasDice tiles (like old viewer)
+    const cellSize = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell-size')) || 80;
+    const gap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--grid-gap')) || 8;
+    for (const tile of tiles) {
+      if (tile.type === 'damage' && tile.hasDice) {
+        const pos = this.tilePositions[tile.id];
+        if (!pos) continue;
+        const { container, element } = this._createDiceContainer();
+        const targetX = pos.col * (cellSize + gap);
+        const targetY = pos.row * (cellSize + gap);
+        container.style.transform = `translate(${targetX}px, ${targetY}px)`;
+        this.board.appendChild(container);
+        this.initialDice = this.initialDice || {};
+        this.initialDice[tile.id] = { container, element };
+      }
+    }
+
     // Center on start tile
     const startTile = tiles.find(t => t.type === 'start');
     if (startTile) {
@@ -179,7 +200,7 @@ export class Renderer3D {
         break;
       case 'damage':
         cellEl.classList.add('t-damage-panel');
-        if (tile.noBox) cellEl.classList.add('no-box');
+        cellEl.classList.add('no-box');
         break;
       case 'event':
         cellEl.classList.add('t-special-panel');
@@ -286,9 +307,8 @@ export class Renderer3D {
   updateGameState(players, currentPlayerId, prizeCubes, tiles) {
     if (!this.board) return;
 
-    // Remove old dynamic elements
+    // Remove old dynamic elements (except dice containers which persist)
     this.board.querySelectorAll('.player-token-3d').forEach(el => el.remove());
-    this.board.querySelectorAll('.prize-cube-3d').forEach(el => el.remove());
     this.board.querySelectorAll('.owner-ring').forEach(el => el.remove());
     this.board.querySelectorAll('.level-indicator').forEach(el => el.remove());
 
@@ -319,22 +339,9 @@ export class Renderer3D {
       }
     }
 
-    // Prize Cubes (free, not ridden)
+    // Prize Cubes (real 3D dice cubes)
     if (prizeCubes) {
-      for (const cube of prizeCubes) {
-        if (cube.riderId !== null) continue;
-        const cellEl = this.cellElements[cube.tileId];
-        if (!cellEl) continue;
-
-        const cubeDiv = document.createElement('div');
-        cubeDiv.className = 'prize-cube-3d';
-        const img = document.createElement('img');
-        img.src = 'images/dice.png';
-        cubeDiv.appendChild(img);
-
-        const zplus = cellEl.querySelector('.face.Zplus');
-        if (zplus) zplus.appendChild(cubeDiv);
-      }
+      this._updatePrizeCubes(prizeCubes);
     }
 
     // Player tokens
@@ -379,5 +386,119 @@ export class Renderer3D {
         this.selectCell(currentPlayer.position);
       }
     }
+  }
+
+  // === Prize Cubes (real 3D dice) ===
+
+  _updatePrizeCubes(prizeCubes) {
+    const cellSize = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell-size')) || 80;
+    const gap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--grid-gap')) || 8;
+
+    // On first call, adopt initial dice containers created at board generation
+    if (this.initialDice && Object.keys(this.initialDice).length > 0) {
+      for (const cube of prizeCubes) {
+        if (this.initialDice[cube.sourceTileId]) {
+          const init = this.initialDice[cube.sourceTileId];
+          this.diceContainers[cube.id] = { container: init.container, element: init.element, tileId: cube.sourceTileId };
+          delete this.initialDice[cube.sourceTileId];
+        }
+      }
+      // Remove any leftover initial dice not matched to a prize cube
+      for (const [tileId, init] of Object.entries(this.initialDice)) {
+        init.container.remove();
+      }
+      this.initialDice = {};
+    }
+
+    // Track which cubes still exist
+    const activeCubeIds = new Set();
+
+    for (const cube of prizeCubes) {
+      activeCubeIds.add(cube.id);
+      const pos = this.tilePositions[cube.tileId];
+      if (!pos) continue;
+
+      const targetX = pos.col * (cellSize + gap);
+      const targetY = pos.row * (cellSize + gap);
+
+      if (!this.diceContainers[cube.id]) {
+        // Create new 3D dice
+        const { container, element } = this._createDiceContainer();
+        container.style.transform = `translate(${targetX}px, ${targetY}px)`;
+        this.board.appendChild(container);
+        this.diceContainers[cube.id] = { container, element, tileId: cube.tileId };
+      } else {
+        const dc = this.diceContainers[cube.id];
+        dc.container.style.display = '';
+
+        // If tile changed, roll animation
+        if (dc.tileId !== cube.tileId) {
+          const oldPos = this.tilePositions[dc.tileId];
+          if (oldPos) {
+            this._rollDiceTo(dc, oldPos, pos, cellSize, gap);
+          } else {
+            dc.container.style.transform = `translate(${targetX}px, ${targetY}px)`;
+          }
+          dc.tileId = cube.tileId;
+        }
+      }
+    }
+
+    // Remove dice for cubes that no longer exist
+    for (const id of Object.keys(this.diceContainers)) {
+      if (!activeCubeIds.has(parseInt(id))) {
+        this.diceContainers[id].container.remove();
+        delete this.diceContainers[id];
+      }
+    }
+  }
+
+  _createDiceContainer() {
+    const container = document.createElement('div');
+    container.className = 'dice-container-3d';
+
+    const element = document.createElement('div');
+    element.className = 'cell3d t-dice';
+    this._createFaces(element);
+
+    container.appendChild(element);
+    return { container, element };
+  }
+
+  _rollDiceTo(dc, fromPos, toPos, cellSize, gap) {
+    const dr = toPos.row - fromPos.row;
+    const dc2 = toPos.col - fromPos.col;
+
+    // Determine roll direction
+    let direction = null;
+    if (dc2 > 0) direction = 'XPlus';
+    else if (dc2 < 0) direction = 'XMinus';
+    else if (dr > 0) direction = 'YPlus';
+    else if (dr < 0) direction = 'YMinus';
+
+    if (!direction) return;
+
+    const el = dc.element;
+
+    // Remove old rotation classes
+    const rotClasses = ['rotatingTowardsXPlus', 'rotatingTowardsXMinus', 'rotatingTowardsYPlus', 'rotatingTowardsYMinus',
+                        'willRotateTowardsXPlus', 'willRotateTowardsXMinus', 'willRotateTowardsYPlus', 'willRotateTowardsYMinus'];
+    el.classList.remove(...rotClasses);
+
+    // Set will-rotate (transform-origin) then rotate
+    el.classList.add(`willRotateTowards${direction}`);
+    // Force reflow so the transform-origin applies before the rotation
+    void el.offsetWidth;
+    el.classList.add(`rotatingTowards${direction}`);
+
+    // Move container immediately so translation and roll happen in parallel
+    const targetX = toPos.col * (cellSize + gap);
+    const targetY = toPos.row * (cellSize + gap);
+    dc.container.style.transform = `translate(${targetX}px, ${targetY}px)`;
+
+    // After animation, remove rotation classes
+    setTimeout(() => {
+      el.classList.remove(...rotClasses);
+    }, MOVE_STEP_DURATION);
   }
 }
