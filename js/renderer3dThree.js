@@ -704,32 +704,47 @@ export class Renderer3D {
     return mesh;
   }
 
-  // === Dice rolling animation ===
+  // === Dice rolling animation (edge-pivot) ===
 
   _startDiceRoll(dc, fromPos, toPos) {
-    // Cancel any in-progress roll for this mesh
     this.activeRolls = this.activeRolls.filter((r) => r.mesh !== dc.mesh);
 
-    const fromVec = new THREE.Vector3(fromPos.col * SPACING, dc.mesh.position.y, fromPos.row * SPACING);
-    const toVec = new THREE.Vector3(toPos.col * SPACING, dc.mesh.position.y, toPos.row * SPACING);
+    const S = TILE_SIZE;
+    const from = new THREE.Vector3(fromPos.col * SPACING, dc.mesh.position.y, fromPos.row * SPACING);
+    const to = new THREE.Vector3(toPos.col * SPACING, dc.mesh.position.y, toPos.row * SPACING);
 
-    const dx = toVec.x - fromVec.x;
-    const dz = toVec.z - fromVec.z;
+    const dx = toPos.col - fromPos.col;
+    const dz = toPos.row - fromPos.row;
 
-    // Rotation axis perpendicular to movement direction
-    let axis;
-    if (Math.abs(dx) > Math.abs(dz)) {
-      axis = new THREE.Vector3(0, 0, dx > 0 ? -1 : 1);
-    } else {
-      axis = new THREE.Vector3(dz > 0 ? 1 : -1, 0, 0);
+    // Pivot = bottom edge between current bottom face and next bottom face
+    // Offset = vector from pivot to cube center before roll
+    let pivot, offset, axis;
+
+    if (dx > 0) {        // rolling +X (right)
+      pivot = new THREE.Vector3(from.x + S / 2, from.y - S / 2, from.z);
+      offset = new THREE.Vector3(-S / 2, S / 2, 0);
+      axis = new THREE.Vector3(0, 0, -1);
+    } else if (dx < 0) { // rolling -X (left)
+      pivot = new THREE.Vector3(from.x - S / 2, from.y - S / 2, from.z);
+      offset = new THREE.Vector3(S / 2, S / 2, 0);
+      axis = new THREE.Vector3(0, 0, 1);
+    } else if (dz > 0) { // rolling +Z (down in rows)
+      pivot = new THREE.Vector3(from.x, from.y - S / 2, from.z + S / 2);
+      offset = new THREE.Vector3(0, S / 2, -S / 2);
+      axis = new THREE.Vector3(1, 0, 0);
+    } else {              // rolling -Z (up in rows)
+      pivot = new THREE.Vector3(from.x, from.y - S / 2, from.z - S / 2);
+      offset = new THREE.Vector3(0, S / 2, S / 2);
+      axis = new THREE.Vector3(-1, 0, 0);
     }
 
     this.activeRolls.push({
       mesh: dc.mesh,
-      from: fromVec,
-      to: toVec,
+      pivot,
+      offset,
       axis,
       startQuat: dc.mesh.quaternion.clone(),
+      to,
       progress: 0,
       duration: MOVE_STEP_DURATION / 1000,
     });
@@ -741,13 +756,19 @@ export class Renderer3D {
       r.progress += dt / r.duration;
 
       if (r.progress >= 1) {
+        // Snap to final position and apply full 90° rotation
         r.mesh.position.copy(r.to);
         const q = new THREE.Quaternion().setFromAxisAngle(r.axis, Math.PI / 2);
         r.mesh.quaternion.copy(q.multiply(r.startQuat));
         this.activeRolls.splice(i, 1);
       } else {
-        r.mesh.position.lerpVectors(r.from, r.to, r.progress);
-        const q = new THREE.Quaternion().setFromAxisAngle(r.axis, (Math.PI / 2) * r.progress);
+        // Arc: rotate the center-to-pivot offset, producing a circular trajectory
+        const angle = (Math.PI / 2) * r.progress;
+        const rotatedOffset = r.offset.clone().applyAxisAngle(r.axis, angle);
+        r.mesh.position.copy(r.pivot).add(rotatedOffset);
+
+        // Orientation follows the same rotation
+        const q = new THREE.Quaternion().setFromAxisAngle(r.axis, angle);
         r.mesh.quaternion.copy(q.multiply(r.startQuat.clone()));
       }
     }
