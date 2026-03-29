@@ -7,6 +7,16 @@ import { MOVE_STEP_DURATION } from './gameManager.js';
 
 const COLORED_PANEL_COUNT = 16;
 
+// Toon shading: 3-step gradient map (shadow / mid / lit)
+function createToonGradient() {
+  const data = new Uint8Array([90, 160, 255]);
+  const tex = new THREE.DataTexture(data, 3, 1, THREE.RedFormat);
+  tex.minFilter = THREE.NearestFilter;
+  tex.magFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 // 3D dimensions
 const TILE_SIZE = 1;
 const TILE_HEIGHT = 1;
@@ -141,20 +151,25 @@ export class Renderer3D {
       RIGHT: THREE.MOUSE.PAN,
     };
 
-    // Lighting
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    // Toon gradient (shared by all toon materials)
+    this._toonGradient = createToonGradient();
+
+    // Lighting — bright ambient + strong directional for clear toon shadows
+    const ambient = new THREE.AmbientLight(0xffffff, 1.8);
     this.scene.add(ambient);
 
-    this.dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    this.dirLight = new THREE.DirectionalLight(0xffffff, 2.5);
     this.dirLight.castShadow = true;
     this.dirLight.shadow.mapSize.set(2048, 2048);
+    this.dirLight.shadow.bias = -0.002;
+    this.dirLight.shadow.normalBias = 0.02;
     this.scene.add(this.dirLight);
     this.scene.add(this.dirLight.target);
 
     // Ground plane (receives shadows)
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(200, 200),
-      new THREE.MeshStandardMaterial({ color: 0x12122a, roughness: 1 }),
+      new THREE.MeshToonMaterial({ color: 0x12122a, gradientMap: this._toonGradient }),
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.01;
@@ -321,7 +336,7 @@ export class Renderer3D {
         // --- Damage panel (flat) ---
         if (tile.type === 'damage') {
           const tex = this._loadTexture(TILE_TEXTURES.damage);
-          const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 });
+          const mat = new THREE.MeshToonMaterial({ map: tex, gradientMap: this._toonGradient });
           const mesh = new THREE.Mesh(new THREE.BoxGeometry(TILE_SIZE, DAMAGE_TILE_HEIGHT, TILE_SIZE), mat);
           mesh.position.set(x, DAMAGE_TILE_HEIGHT / 2, z);
           mesh.receiveShadow = true;
@@ -335,11 +350,11 @@ export class Renderer3D {
         const { texturePath, sideColor } = this._getTileVisuals(tile);
         const tex = texturePath ? this._loadTexture(texturePath) : null;
 
-        const topMat = new THREE.MeshStandardMaterial({
-          map: tex, color: tex ? 0xffffff : sideColor, roughness: 0.6,
+        const topMat = new THREE.MeshToonMaterial({
+          map: tex, color: tex ? 0xffffff : sideColor, gradientMap: this._toonGradient,
         });
-        const sideMat = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.8 });
-        const bottomMat = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 1 });
+        const sideMat = new THREE.MeshToonMaterial({ color: sideColor, gradientMap: this._toonGradient });
+        const bottomMat = new THREE.MeshToonMaterial({ color: sideColor, gradientMap: this._toonGradient });
 
         // Material order: [+x, -x, +y, -y, +z, -z]
         const mesh = new THREE.Mesh(
@@ -379,10 +394,11 @@ export class Renderer3D {
     this._cameraTarget = null;
     this._updateCameraFromAngles();
 
-    this.dirLight.position.set(cx + extent * 0.4, extent * 0.8, cz - extent * 0.4);
+    // Directional light: high up, slightly offset, covers the whole board
+    this.dirLight.position.set(cx + extent * 0.3, extent * 1.2, cz - extent * 0.2);
     this.dirLight.target.position.set(cx, 0, cz);
-    const s = extent * 0.7;
-    Object.assign(this.dirLight.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 0.1, far: extent * 3 });
+    const s = extent * 0.85;
+    Object.assign(this.dirLight.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 1, far: extent * 4 });
     this.dirLight.shadow.camera.updateProjectionMatrix();
 
     // Center on start tile
@@ -397,8 +413,8 @@ export class Renderer3D {
     const sz = isH ? 0.3 : 1.2;
 
     const tex = this._loadTexture(isH ? TILE_TEXTURES.teleporter_h : TILE_TEXTURES.teleporter_v);
-    const topMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 });
-    const cyanMat = new THREE.MeshStandardMaterial({ color: 0x71dff8, roughness: 0.8 });
+    const topMat = new THREE.MeshToonMaterial({ map: tex, gradientMap: this._toonGradient });
+    const cyanMat = new THREE.MeshToonMaterial({ color: 0x71dff8, gradientMap: this._toonGradient });
 
     // Material order: [+x, -x, +y, -y, +z, -z]
     const materials = isH
@@ -557,7 +573,7 @@ export class Renderer3D {
 
   _addPlayerToken(player, tileId, stackIdx, stackCount, isCurrent) {
     const color = new THREE.Color(player.color);
-    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.2 });
+    const mat = new THREE.MeshToonMaterial({ color, gradientMap: this._toonGradient });
     const mesh = new THREE.Mesh(this._tokenGeom, mat);
     mesh.castShadow = true;
 
@@ -698,7 +714,7 @@ export class Renderer3D {
 
   _createDiceMesh() {
     const tex = this._loadTexture(TILE_TEXTURES.dice);
-    const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 });
+    const mat = new THREE.MeshToonMaterial({ map: tex, gradientMap: this._toonGradient });
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(TILE_SIZE, TILE_SIZE, TILE_SIZE), mat);
     mesh.castShadow = true;
     return mesh;
