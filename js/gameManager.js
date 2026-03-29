@@ -1422,8 +1422,8 @@ export class GameManager {
         return;
       }
 
-      // Joueur suivant
-      this.nextPlayer();
+      // Joueur suivant (delai entre les tours)
+      setTimeout(() => this.nextPlayer(), 1000);
     });
   }
 
