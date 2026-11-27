@@ -54,8 +54,9 @@ function average(colors) {
 const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
 // { size, data } (pixels RGBA à la suite) -> modèle de la case :
-// { size, body, rim, cells: [{ x, y, kind: 'rim' | 'bg' | 'motif' | 'slot', color }] }
-// Les couleurs sont des entiers 0xRRGGBB. Retourne null si l'image ne convient pas.
+// { size, body, rim, motif, cells: [{ x, y, kind: 'rim' | 'bg' | 'motif' | 'slot', color }] }
+// Les couleurs sont des entiers 0xRRGGBB ; `motif` est la couleur principale du motif, ou null
+// s'il n'y en a pas. Retourne null si l'image ne convient pas.
 export function analyzeTileArt({ size, data }) {
   if (size < 5 || size > MAX_ART_SIZE) return null;
 
@@ -115,5 +116,9 @@ export function analyzeTileArt({ size, data }) {
     }
   }
 
-  return { size, body, rim, cells };
+  // Couleur du motif : celle qui y occupe le plus de pixels (null s'il n'y a pas de motif)
+  const main = clusters.filter(c => c !== background).sort((a, b) => b.cells.length - a.cells.length)[0];
+  const motif = main ? toHex(average(main.colors)) : null;
+
+  return { size, body, rim, motif, cells };
 }

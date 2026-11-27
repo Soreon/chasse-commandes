@@ -45,6 +45,7 @@ test('case commande : cadre, fond gris et emplacement en creux au centre', () =>
   assert.equal(kindAt(model, 3, 3), 'slot');
   assert.equal(model.cells.filter(c => c.kind === 'slot').length, 9);
   assert.equal(model.cells.filter(c => c.kind === 'motif').length, 0);
+  assert.equal(model.motif, null, 'pas de motif, donc pas de couleur de motif');
 });
 
 test('checkpoint : le fond est la couleur du pourtour, la croix forme le motif', () => {
@@ -72,6 +73,7 @@ test('checkpoint : le fond est la couleur du pourtour, la croix forme le motif',
   assert.equal(kindAt(model, 3, 1), 'motif', 'le bout de la croix touche le pourtour mais reste du motif');
   assert.equal(colorAt(model, 3, 3), 0xf01808);
   assert.equal(model.cells.filter(c => c.kind === 'motif').length, 13);
+  assert.equal(model.motif, 0xf01808, 'la couleur du motif est celle de la croix');
 });
 
 test('une image trop petite ou trop grande n\'est pas exploitée', () => {

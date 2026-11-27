@@ -527,17 +527,19 @@ export class Renderer3D {
   }
 
   // Flanc d'une case : dégradé par paliers et panneau en creux, dessinés en pixel art
-  // à partir de la couleur de la case
-  _sideMaterial(colorHex) {
-    const key = `side|${colorHex}`;
+  // à partir de la couleur de la case. `accentHex` : couleur du motif d'une case Bonus,
+  // rappelée au milieu du panneau pour qu'on la reconnaisse aussi de côté.
+  _sideMaterial(colorHex, accentHex = null) {
+    const key = `side|${colorHex}|${accentHex}`;
     if (!this._tileMaterials.has(key)) {
-      const base = new THREE.Color(colorHex);
-      const shade = (amount) => {
-        const c = base.clone();
+      // Nuance d'une couleur : vers le blanc si amount > 0, vers le sombre sinon
+      const tone = (hex, amount) => {
+        const c = new THREE.Color(hex);
         if (amount >= 0) c.lerp(new THREE.Color(0xffffff), amount);
         else c.lerp(new THREE.Color(0x05061a), -amount);
         return `#${c.getHexString()}`;
       };
+      const shade = amount => tone(colorHex, amount);
       const N = 16; // grille de 16 × 16 « pixels »
       const canvas = document.createElement('canvas');
       canvas.width = N;
@@ -558,10 +560,20 @@ export class Renderer3D {
       ctx.fillStyle = shade(0.12);
       ctx.fillRect(4, 11, 9, 1);
       ctx.fillRect(12, 5, 1, 7);
-      // Petit éclat lumineux dans le panneau
-      ctx.fillStyle = shade(0.35);
-      ctx.fillRect(5, 6, 2, 1);
-      ctx.fillRect(5, 7, 1, 1);
+      if (accentHex === null) {
+        // Petit éclat lumineux dans le panneau
+        ctx.fillStyle = shade(0.35);
+        ctx.fillRect(5, 6, 2, 1);
+        ctx.fillRect(5, 7, 1, 1);
+      } else {
+        // Pavé à la couleur du motif, avec son reflet en haut et son ombre en bas
+        ctx.fillStyle = tone(accentHex, 0);
+        ctx.fillRect(5, 6, 6, 4);
+        ctx.fillStyle = tone(accentHex, 0.4);
+        ctx.fillRect(5, 6, 6, 1);
+        ctx.fillStyle = tone(accentHex, -0.22);
+        ctx.fillRect(5, 9, 6, 1);
+      }
 
       const tex = new THREE.CanvasTexture(canvas);
       tex.magFilter = THREE.NearestFilter;
@@ -682,7 +694,10 @@ export class Renderer3D {
           // Cube : flancs sur toute la hauteur ; le dessus est le rebord de l'image, évidé en son
           // centre, et le dessin est posé au fond de la cuvette
           const geometry = art ? this._shellGeometry(art.size) : this._hullGeom;
-          mesh = new THREE.Mesh(geometry, [this._plainMaterial(art ? art.rim : bodyColor), this._sideMaterial(bodyColor)]);
+          // Case Bonus : son flanc reprend le jaune de son motif. Sans cela, de côté, rien ne la
+          // distingue d'une case commande grise.
+          const accent = art && tile.type === TileType.BONUS ? art.motif : null;
+          mesh = new THREE.Mesh(geometry, [this._plainMaterial(art ? art.rim : bodyColor), this._sideMaterial(bodyColor, accent)]);
           mesh.position.set(x, TILE_HEIGHT / 2, z);
           mesh.castShadow = true;
           mesh.add(this._outline(this._hullGeom, bodyColor));
