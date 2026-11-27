@@ -311,13 +311,13 @@ export class MapBuilder {
 
     const boards = MapBuilder.getCustomBoards();
     if (boards[name]) {
-      if (!confirm(`"${name}" existe deja. Ecraser ?`)) return;
+      if (!confirm(`"${name}" existe déjà. Écraser ?`)) return;
     }
 
     boards[name] = { grid: this._getBoardData(), zones: this._buildZoneDefs() };
     localStorage.setItem('customBoards', JSON.stringify(boards));
     this._refreshBoardsList();
-    this._setStatus(`Plateau "${name}" sauvegarde.`);
+    this._setStatus(`Plateau "${name}" sauvegardé.`);
   }
 
   _buildZoneDefs() {
@@ -364,7 +364,7 @@ export class MapBuilder {
     this._loadBoardData(boardData);
     this._resetHistory();
     this._addHistory();
-    this._setStatus(`Plateau charge.`);
+    this._setStatus(`Plateau chargé.`);
   }
 
   _deleteBoard() {
@@ -375,7 +375,7 @@ export class MapBuilder {
     delete boards[sel];
     localStorage.setItem('customBoards', JSON.stringify(boards));
     this._refreshBoardsList();
-    this._setStatus(`Plateau supprime.`);
+    this._setStatus(`Plateau supprimé.`);
   }
 
   _refreshBoardsList() {
@@ -448,7 +448,7 @@ export class MapBuilder {
       }
     }
 
-    if (!flat.includes('A')) msgs.push('Il manque la case Depart.');
+    if (!flat.includes('A')) msgs.push('Il manque la case Départ.');
     if (!flat.includes('B') || !flat.includes('G') || !flat.includes('R') || !flat.includes('Y')) {
       msgs.push('Il manque un ou plusieurs checkpoints (4 requis).');
     }
@@ -459,11 +459,11 @@ export class MapBuilder {
       const nonEmpty = neighbors.filter(n => n !== ' ');
       if (nonEmpty.length < 2 && flat[i] !== 'H' && flat[i] !== 'V') {
         const r = Math.floor(i / this.gridSize), c = i % this.gridSize;
-        msgs.push(`Case isolee en (${r}, ${c}).`);
+        msgs.push(`Case isolée en (${r}, ${c}).`);
       }
       if (flat[i] === 'D' && !neighbors.includes('P')) {
         const r = Math.floor(i / this.gridSize), c = i % this.gridSize;
-        msgs.push(`Dice en (${r}, ${c}) sans case damage adjacente.`);
+        msgs.push(`Prize Cube en (${r}, ${c}) sans case de dégâts voisine.`);
       }
     }
 
@@ -471,7 +471,7 @@ export class MapBuilder {
       this._setStatus('Le plateau est valide !');
       alert('Le plateau est valide !');
     } else {
-      this._setStatus(`${msgs.length} probleme(s) detecte(s).`);
+      this._setStatus(`${msgs.length} problème(s) détecté(s).`);
       alert(msgs.join('\n'));
     }
     return msgs.length === 0;
@@ -612,7 +612,7 @@ export class MapBuilder {
   // === Reset ===
 
   _resetGrid() {
-    if (!confirm('Reinitialiser la grille ?')) return;
+    if (!confirm('Réinitialiser la grille ?')) return;
     this.usedCheckpoints.clear();
     this.isStartPanelUsed = false;
     this._enableAllOptions();
@@ -624,7 +624,7 @@ export class MapBuilder {
     });
     this._resetHistory();
     this._addHistory();
-    this._setStatus('Grille reinitialisee.');
+    this._setStatus('Grille réinitialisée.');
   }
 
   // === Helpers ===
