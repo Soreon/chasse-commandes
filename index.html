@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Command Board - Kingdom Hearts</title>
+  <link rel="icon" href="images/dice.png">
   <link rel="stylesheet" href="css/style.css">
-  <link rel="stylesheet" href="css/board3d.css">
   <script type="importmap">
   {
     "imports": {
@@ -18,33 +18,50 @@
 <body>
   <!-- Menu principal -->
   <div id="main-menu" class="screen active">
+    <!-- Décor : cases du plateau qui flottent en perspective -->
+    <div class="menu-bg" aria-hidden="true">
+      <span style="background-image:url('images/coloredCommandPanel/1.png');--x:8%;--y:18%;--s:92px;--d:0s"></span>
+      <span style="background-image:url('images/blueCheckpoint.png');--x:20%;--y:68%;--s:120px;--d:-4s"></span>
+      <span style="background-image:url('images/coloredCommandPanel/6.png');--x:31%;--y:12%;--s:64px;--d:-9s"></span>
+      <span style="background-image:url('images/bonusPanel.png');--x:74%;--y:14%;--s:104px;--d:-2s"></span>
+      <span style="background-image:url('images/coloredCommandPanel/11.png');--x:86%;--y:52%;--s:84px;--d:-7s"></span>
+      <span style="background-image:url('images/startPanel.png');--x:66%;--y:76%;--s:132px;--d:-11s"></span>
+      <span style="background-image:url('images/dice.png');--x:12%;--y:44%;--s:56px;--d:-6s"></span>
+      <span style="background-image:url('images/redCheckpoint.png');--x:90%;--y:22%;--s:60px;--d:-13s"></span>
+      <span style="background-image:url('images/coloredCommandPanel/14.png');--x:44%;--y:84%;--s:72px;--d:-3s"></span>
+      <span style="background-image:url('images/gpBoosterPanel.png');--x:55%;--y:8%;--s:52px;--d:-8s"></span>
+    </div>
     <div class="menu-container">
+      <div class="menu-kicker">Jeu de plateau</div>
       <h1 class="game-title">Command Board</h1>
+      <p class="menu-tagline">Achetez des cases, encaissez les péages, bouclez le tour avant les autres.</p>
       <div class="menu-options">
-        <button id="btn-start" class="menu-btn">Nouvelle Partie</button>
-        <button id="btn-builder" class="menu-btn">Editeur de Plateaux</button>
-        <button id="btn-rules" class="menu-btn">Regles</button>
+        <button id="btn-resume" class="menu-btn primary" hidden><span class="menu-ico">▶</span>Reprendre la partie</button>
+        <button id="btn-start" class="menu-btn"><span class="menu-ico">✦</span>Nouvelle partie</button>
+        <button id="btn-builder" class="menu-btn"><span class="menu-ico">▦</span>Éditeur de plateaux</button>
+        <button id="btn-rules" class="menu-btn"><span class="menu-ico">?</span>Règles</button>
+        <button id="btn-last-journal" class="menu-link" hidden>Télécharger le journal de la dernière partie</button>
       </div>
     </div>
   </div>
 
-  <!-- Setup partie -->
+  <!-- Configuration de la partie -->
   <div id="setup-screen" class="screen">
     <div class="setup-container">
-      <h2>Configuration de la Partie</h2>
+      <h2>Configuration de la partie</h2>
       <div class="setup-field">
-        <label>Nom du joueur :</label>
+        <label for="player-name">Nom du joueur :</label>
         <input type="text" id="player-name" value="Ventus" maxlength="12">
       </div>
       <div class="setup-field">
-        <label>Nombre d'adversaires :</label>
+        <label for="opponent-count">Nombre d'adversaires :</label>
         <select id="opponent-count">
           <option value="1">1</option>
           <option value="2" selected>2</option>
         </select>
       </div>
       <div class="setup-field">
-        <label>Objectif GP :</label>
+        <label for="gp-goal">Objectif :</label>
         <select id="gp-goal">
           <option value="5000">5 000 GP</option>
           <option value="7500" selected>7 500 GP</option>
@@ -52,158 +69,171 @@
         </select>
       </div>
       <div class="setup-field">
-        <label>Plateau :</label>
+        <label for="board-select">Plateau :</label>
         <select id="board-select"></select>
       </div>
       <div class="setup-field">
-        <label>
-          <input type="checkbox" id="spectator-mode"> Mode spectateur (IA vs IA)
-        </label>
+        <label for="spectator-mode">Mode spectateur (IA contre IA)</label>
+        <input type="checkbox" id="spectator-mode">
       </div>
+      <p id="setup-error" class="setup-error" hidden></p>
       <button id="btn-play" class="menu-btn">Jouer !</button>
       <button id="btn-back-menu" class="menu-btn secondary">Retour</button>
     </div>
   </div>
 
-  <!-- Ecran de jeu -->
+  <!-- Écran de jeu -->
   <div id="game-screen" class="screen">
-    <!-- HUD supérieur -->
+    <!-- Barre du haut -->
     <div id="hud-top">
-      <!-- Debug menu -->
-      <div id="debug-menu">
-        <button id="debug-toggle" title="Debug">&#9881;</button>
-        <div id="debug-panel" class="hidden">
-          <button id="debug-pause">&#9208; Pause</button>
-          <label>Inclinaison <span id="debug-tilt-val">60</span>°
-            <input id="debug-tilt" type="range" min="0" max="90" value="60">
-          </label>
-          <label>Rotation <span id="debug-pan-val">0</span>°
-            <input id="debug-pan" type="range" min="0" max="360" value="0">
-          </label>
+      <div id="hud-controls">
+        <button id="btn-quit" class="hud-btn" title="Revenir au menu (la partie est sauvegardée à chaque tour)">Menu</button>
+        <button id="btn-pause" class="hud-btn" title="Mettre la partie en pause">Pause</button>
+        <button id="btn-speed" class="hud-btn" title="Vitesse des animations et des tours de l'IA">Vitesse ×1</button>
+        <button id="btn-journal" class="hud-btn" title="Télécharger le journal détaillé de la partie (déroulé du jeu et informations techniques)">Journal</button>
+        <button id="btn-follow" class="hud-btn active" title="La caméra suit le joueur dont c'est le tour">Suivi caméra</button>
+        <div id="debug-menu">
+          <button id="debug-toggle" class="hud-btn" title="Réglages de la caméra">&#9881;</button>
+          <div id="debug-panel" class="hidden">
+            <label for="debug-tilt">Inclinaison <span id="debug-tilt-val">50</span>°</label>
+            <input id="debug-tilt" type="range" min="5" max="85" value="50">
+            <label for="debug-pan">Rotation <span id="debug-pan-val">0</span>°</label>
+            <input id="debug-pan" type="range" min="0" max="360" value="0">            <label class="check" for="opt-scenery"><input id="opt-scenery" type="checkbox" checked> Décor autour du plateau</label>
+          </div>
         </div>
       </div>
-      <div id="hud-info">
-        <div id="turn-info">Tour <span id="turn-number">1</span></div>
-        <div id="current-player-info">
-          <span id="current-player-name"></span> -
-          <span id="current-player-gp">0</span> GP
-          (Net: <span id="current-player-net">0</span>)
-        </div>
-        <div id="gp-goal-display">Objectif : <span id="goal-value">7500</span> GP</div>
+      <!-- À qui c'est de jouer (l'argent et la fortune sont dans le panneau des joueurs) -->
+      <div id="turn-status">
+        <span class="turn-chip">Tour <span id="turn-number">1</span></span>
+        <span id="turn-dot"></span>
+        <span id="turn-who"></span>
       </div>
+      <div id="gp-goal-display">Objectif <span id="goal-value">7 500</span> GP</div>
     </div>
 
-    <!-- Zone plateau -->
+    <!-- Plateau -->
     <div id="board-container">
-      <!-- Vue 3D principale -->
       <div id="board-3d-wrapper"></div>
-      <!-- Minimap 2D -->
-      <div id="board-minimap">
+
+      <div id="board-minimap" title="Cliquer pour amener la caméra sur une case">
         <canvas id="board-canvas"></canvas>
       </div>
-      <!-- Overlay pour les choix de direction -->
-      <div id="direction-overlay" class="overlay hidden">
-        <div class="overlay-content">
-          <h3>Choisissez une direction</h3>
-          <div id="direction-buttons"></div>
+
+      <div id="players-panel">
+        <div id="players-list"></div>
+      </div>
+
+      <!-- Choix à faire sur le plateau (direction, case de destination) : ne masque rien -->
+      <div id="choice-banner" class="hidden">
+        <div id="choice-text"></div>
+        <div id="choice-buttons"></div>
+      </div>
+
+      <!-- Annonce d'un événement (main jouée, case capturée…) -->
+      <div id="announce-banner" class="hidden">
+        <div id="announce-icon"></div>
+        <div>
+          <div id="announce-title"></div>
+          <div id="announce-text"></div>
         </div>
       </div>
-      <!-- Message log (dans le board-container pour eviter le chevauchement) -->
+
+      <div id="dice-display" class="hidden"></div>
+      <div id="notif-stack"></div>
+
       <div id="message-log">
         <div id="log-entries"></div>
       </div>
+
+      <!-- Fenêtre de décision (achat, péage, main de cartes…) -->
+      <div id="modal-overlay" class="overlay hidden">
+        <div class="overlay-content" id="modal-content"></div>
+      </div>
     </div>
 
-    <!-- HUD inférieur - Main du joueur -->
+    <!-- Barre du bas : main du joueur et actions -->
     <div id="hud-bottom">
       <div id="player-hand">
-        <div class="hand-label">Main :</div>
+        <div class="hand-label"><span>Votre main</span><span id="hand-count"></span></div>
         <div id="hand-cards"></div>
       </div>
       <div id="action-panel">
-        <button id="btn-use-magic" class="action-btn magic-btn" disabled>Jouer une Main</button>
-        <button id="btn-roll" class="action-btn">Lancer (1 de)</button>
-        <button id="btn-end-turn" class="action-btn" disabled>Passer</button>
+        <div id="action-status"></div>
+        <div class="action-row">
+          <button id="btn-play-hand" class="action-btn hand-btn" disabled>
+            <span class="action-title">Jouer une main</span>
+            <span class="action-sub" id="hand-btn-sub"></span>
+          </button>
+          <button id="btn-roll" class="action-btn roll-btn" disabled>
+            <span class="action-ico" aria-hidden="true">🎲</span>
+            <span class="action-title" id="roll-btn-title">Lancer le dé</span>
+          </button>
+        </div>
       </div>
     </div>
 
-    <!-- Panneau joueurs -->
-    <div id="players-panel">
-      <div id="players-list"></div>
-    </div>
-
-    <!-- Overlays de jeu -->
-    <div id="tile-action-overlay" class="overlay hidden">
-      <div class="overlay-content" id="tile-action-content"></div>
-    </div>
-
-    <div id="magic-overlay" class="overlay hidden">
-      <div class="overlay-content" id="magic-content"></div>
-    </div>
-
-    <div id="event-overlay" class="overlay hidden">
-      <div class="overlay-content" id="event-content"></div>
-    </div>
-
-    <div id="dice-overlay" class="overlay hidden">
-      <div class="dice-display" id="dice-display"></div>
-    </div>
-
-    <div id="notif-overlay" class="overlay hidden">
-      <div class="notif-display" id="notif-display"></div>
-    </div>
-
-    <!-- Tooltip de case -->
     <div id="tile-tooltip" class="tile-tooltip hidden"></div>
 
+    <!-- Confirmation de retour au menu -->
+    <div id="quit-overlay" class="overlay centered hidden">
+      <div class="overlay-content">
+        <h3>Revenir au menu ?</h3>
+        <p>La partie est sauvegardée au début de chaque tour : vous pourrez la reprendre depuis le menu.</p>
+        <div>
+          <button class="overlay-btn danger" id="btn-quit-confirm">Revenir au menu</button>
+          <button class="overlay-btn" id="btn-quit-cancel">Continuer la partie</button>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <!-- Ecran de victoire -->
+  <!-- Écran de fin -->
   <div id="victory-screen" class="screen">
     <div class="victory-container">
       <h1 class="victory-title">Victoire !</h1>
       <div id="winner-name"></div>
+      <div id="winner-reason"></div>
       <div id="final-scores"></div>
+      <button id="btn-victory-journal" class="menu-btn secondary">Télécharger le journal de la partie</button>
       <button id="btn-back-to-menu" class="menu-btn">Retour au menu</button>
     </div>
   </div>
 
-  <!-- Ecran editeur de plateaux -->
+  <!-- Éditeur de plateaux -->
   <div id="builder-screen" class="screen">
     <div class="builder-layout">
-      <!-- Panneau lateral gauche -->
       <div class="builder-sidebar">
-        <h2>Editeur</h2>
+        <h2>Éditeur</h2>
 
         <div class="builder-field">
-          <label>Element :</label>
+          <label for="builder-element">Élément :</label>
           <select id="builder-element">
             <option selected value="empty">Vide</option>
             <optgroup label="Checkpoints">
-              <option value="blueCheckpoint">Checkpoint Bleu</option>
-              <option value="greenCheckpoint">Checkpoint Vert</option>
-              <option value="redCheckpoint">Checkpoint Rouge</option>
-              <option value="yellowCheckpoint">Checkpoint Jaune</option>
+              <option value="blueCheckpoint">Checkpoint bleu</option>
+              <option value="greenCheckpoint">Checkpoint vert</option>
+              <option value="redCheckpoint">Checkpoint rouge</option>
+              <option value="yellowCheckpoint">Checkpoint jaune</option>
             </optgroup>
-            <optgroup label="Piste Damage">
-              <option value="dice">Dice (source)</option>
-              <option value="damagePanel">Damage Panel</option>
+            <optgroup label="Piste de dégâts">
+              <option value="dice">Prize Cube (départ)</option>
+              <option value="damagePanel">Case de dégâts</option>
             </optgroup>
-            <optgroup label="Teleporteurs">
-              <option value="horizontalTeleporter">Teleporteur Horizontal</option>
-              <option value="verticalTeleporter">Teleporteur Vertical</option>
+            <optgroup label="Téléporteurs">
+              <option value="horizontalTeleporter">Téléporteur horizontal</option>
+              <option value="verticalTeleporter">Téléporteur vertical</option>
             </optgroup>
             <option value="bonusPanel">Bonus</option>
             <option value="commandPanel">Commande</option>
             <option value="gpBoosterPanel">GP Booster</option>
-            <option value="specialPanel">Evenement</option>
-            <option value="startPanel">Depart</option>
+            <option value="specialPanel">Événement</option>
+            <option value="startPanel">Départ</option>
           </select>
           <div id="builder-preview" class="builder-preview"></div>
         </div>
 
         <div class="builder-field">
-          <label>Zone (commandes) :</label>
+          <label for="builder-zone">Zone (cases commande) :</label>
           <select id="builder-zone">
             <option value="">Aucune</option>
             <option value="A">Zone A</option>
@@ -216,18 +246,18 @@
         </div>
 
         <div class="builder-field">
-          <label>Taille :</label>
+          <label for="builder-grid-size">Taille :</label>
           <input id="builder-grid-size" type="number" min="3" max="30" value="10">
         </div>
 
         <div class="builder-field builder-buttons">
           <button id="builder-save" class="menu-btn small">Sauvegarder</button>
-          <button id="builder-reset" class="menu-btn small secondary">Reinitialiser</button>
+          <button id="builder-reset" class="menu-btn small secondary">Réinitialiser</button>
           <button id="builder-validate" class="menu-btn small">Valider</button>
         </div>
 
         <div class="builder-field">
-          <label>Plateaux :</label>
+          <label for="builder-boards-list">Plateaux :</label>
           <select id="builder-boards-list"></select>
           <div class="builder-buttons">
             <button id="builder-load" class="menu-btn small" disabled>Charger</button>
@@ -236,11 +266,11 @@
         </div>
 
         <div class="builder-field">
-          <label>Decaler :</label>
+          <span class="builder-label">Décaler :</span>
           <div class="builder-shift-grid">
-            <span></span><button id="builder-shift-up" class="shift-btn">&#9650;</button><span></span>
-            <button id="builder-shift-left" class="shift-btn">&#9664;</button><span></span><button id="builder-shift-right" class="shift-btn">&#9654;</button>
-            <span></span><button id="builder-shift-down" class="shift-btn">&#9660;</button><span></span>
+            <span></span><button id="builder-shift-up" class="shift-btn" title="Décaler vers le haut">&#9650;</button><span></span>
+            <button id="builder-shift-left" class="shift-btn" title="Décaler vers la gauche">&#9664;</button><span></span><button id="builder-shift-right" class="shift-btn" title="Décaler vers la droite">&#9654;</button>
+            <span></span><button id="builder-shift-down" class="shift-btn" title="Décaler vers le bas">&#9660;</button><span></span>
           </div>
         </div>
 
@@ -249,44 +279,43 @@
         <button id="btn-back-builder" class="menu-btn secondary">Retour au menu</button>
       </div>
 
-      <!-- Zone de la grille -->
       <div class="builder-grid-area">
         <div id="builder-grid" class="builder-grid"></div>
       </div>
     </div>
   </div>
 
-  <!-- Ecran des regles -->
+  <!-- Règles -->
   <div id="rules-screen" class="screen">
     <div class="rules-container">
-      <h2>Regles du Command Board</h2>
+      <h2>Règles du Command Board</h2>
       <div class="rules-text">
         <h3>Objectif</h3>
-        <p>Atteignez l'objectif de GP totaux (GP courants + valeur des cases) et revenez sur la case Depart pour gagner !</p>
+        <p>Atteignez l'objectif de fortune (GP en poche + valeur de vos cases), puis passez ou arrêtez-vous sur la case Départ pour gagner !</p>
         <h3>Tour de jeu</h3>
-        <p>1. Jouez une main de cartes (optionnel) - combinez vos cartes pour un effet special</p>
-        <p>2. Lancez le de et deplacez-vous</p>
-        <p>3. Resolvez la case d'arrivee</p>
+        <p>1. Jouez une main de cartes si vous le souhaitez : une combinaison de cartes pour un effet spécial.</p>
+        <p>2. Lancez le dé et déplacez-vous. Aux intersections, cliquez sur la flèche de votre choix.</p>
+        <p>3. Résolvez la case d'arrivée.</p>
         <h3>Mains de cartes</h3>
-        <p><strong>Stun (1 Attaque) :</strong> Un adversaire passe son tour.</p>
-        <p><strong>Double De (1 Magie) :</strong> Lance 2 des (2-12 cases).</p>
-        <p><strong>Protecteur GP (1 Divers) :</strong> Bloque la prochaine perte de GP.</p>
-        <p><strong>Navigateur (2 Attaque) :</strong> Deplacez-vous dans toutes les directions.</p>
-        <p><strong>Triple De (2 Magie) :</strong> Lance 3 des (3-18 cases).</p>
-        <p><strong>Confusion (2 Divers) :</strong> Adversaires confus 3 tours.</p>
-        <p><strong>Double Peage (3 Attaque) :</strong> Vos peages x2 pendant 5 tours.</p>
-        <p><strong>Aimant GP (1A+1M+1D) :</strong> Gagne GP selon les cases adverses.</p>
-        <p><strong>Fortune du Joker (1 Joker) :</strong> Effet aleatoire ou capture de case.</p>
-        <p><strong>Chance Doree (3 Joker) :</strong> Effet aleatoire ou capture de zone !</p>
+        <p><strong>Stun (1 Attaque) :</strong> un adversaire passe son prochain tour.</p>
+        <p><strong>Double Dé (1 Magie) :</strong> lance 2 dés (2 à 12 cases).</p>
+        <p><strong>Protecteur GP (1 Divers) :</strong> bloque la prochaine perte de GP.</p>
+        <p><strong>Navigateur (2 Attaque) :</strong> toutes les directions sont permises ce tour, demi-tour compris.</p>
+        <p><strong>Triple Dé (2 Magie) :</strong> lance 3 dés (3 à 18 cases).</p>
+        <p><strong>Confusion (2 Divers) :</strong> les adversaires partent au hasard aux intersections pendant 3 tours.</p>
+        <p><strong>Double Péage (3 Attaque) :</strong> vos péages sont doublés pendant 5 tours.</p>
+        <p><strong>Aimant GP (1 Attaque + 1 Magie + 1 Divers) :</strong> rapporte des GP pour chaque case adverse.</p>
+        <p><strong>Fortune du Joker (1 Joker) :</strong> un effet au hasard, ou la capture d'une case libre.</p>
+        <p><strong>Chance Dorée (3 Joker) :</strong> un effet puissant au hasard, ou la capture d'une zone entière !</p>
         <h3>Cases</h3>
-        <p><strong>Depart :</strong> Bonus GP. Restaure la main apres les 4 checkpoints.</p>
-        <p><strong>Commande :</strong> Achetez en placant une carte. Groupees en zones.</p>
-        <p><strong>Checkpoint :</strong> +300 GP, +1 carte. 4 a activer pour le bonus de tour.</p>
-        <p><strong>Bonus :</strong> Achetez une commande predeterminee.</p>
-        <p><strong>Booster :</strong> Accumule un % en passant, active en s'arretant.</p>
-        <h3>Zones et Monopoles</h3>
-        <p>Posseder plusieurs cases d'une meme zone augmente leur valeur.</p>
-        <p>Posseder TOUTE une zone donne un bonus d'exclusivite massif !</p>
+        <p><strong>Départ :</strong> bonus de GP. Après les 4 checkpoints, bonus de tour et main complétée.</p>
+        <p><strong>Commande :</strong> achetez-la en y posant une carte. Son prix et sa valeur dépendent de la carte posée. Les cases sont groupées en zones.</p>
+        <p><strong>Checkpoint :</strong> +300 GP et +1 carte. Les 4 sont à activer pour le bonus de tour.</p>
+        <p><strong>Bonus :</strong> une case qui porte déjà une carte. Achetez-la sans dépenser de carte de votre main : elle devient la vôtre, comme une case commande.</p>
+        <p><strong>Booster :</strong> le pourcentage monte à chaque passage et se déclenche quand on s'y arrête.</p>
+        <h3>Zones et monopoles</h3>
+        <p>Posséder plusieurs cases d'une même zone augmente leur valeur.</p>
+        <p>Posséder TOUTE une zone donne un bonus d'exclusivité massif !</p>
       </div>
       <button id="btn-back-rules" class="menu-btn">Retour</button>
     </div>
