@@ -1,6 +1,6 @@
 // Banc d'essai (essais.html) : montre les dessins proposés pour un effet, à côté du dessin actuel,
 // sans avoir à lancer une partie ni à attendre que l'effet soit joué. L'effet à l'essai est
-// décrit par TRIAL, plus bas ; en ce moment : le Double Péage.
+// décrit par TRIAL, plus bas ; en ce moment : l'Aimant GP.
 //
 // Chaque vue est la vraie vue 3D du jeu (Renderer3D) sur un vrai plateau. Seule la partie est
 // factice : un joueur attend sur une case à l'écart, et l'effet s'y joue.
@@ -14,42 +14,39 @@ import { TileType } from './engine/board.js';
 import { PLAYER_COLORS } from './engine/player.js';
 import { TIMING } from './controller.js';
 import { Renderer3D } from './renderer3dThree.js';
-import { TOLL_STYLES } from './tollFx.js';
+import { MAGNET_STYLES } from './magnetFx.js';
 
 const OTHER = 0;   // le joueur dont c'est le tour, resté sur la case Départ
 const SUBJECT = 1; // celui sur qui l'effet se joue, sur une case à l'écart
 
 // L'effet à l'essai
 const TRIAL = {
-  title: 'Double Péage',
-  type: 'doubleToll', // type d'effet, pour Renderer3D.setFxStyle
+  title: 'Aimant GP',
+  type: 'magnet', // type d'effet, pour Renderer3D.setFxStyle
   // Les dessins montrés : l'actuel ('classic'), puis les propositions, numérotées
-  names: { classic: '« ×2 » qui s’élèvent', ...TOLL_STYLES },
-  short: { classic: 'Actuel', drop: 'Ciel', ring: 'Ronde', stamp: '×2', stack: 'Piles' }, // onglets
+  names: { classic: 'Symboles de pièce', ...MAGNET_STYLES },
+  short: { classic: 'Actuel', drop: 'Ciel', ring: 'Ronde', leap: 'Bonds', waves: 'Ondes' }, // onglets
   notes: {
-    classic: 'Le dessin actuel : un « ×2 » s’élève de chaque case du joueur, sous un symbole de sac d’or.',
-    drop: 'Sur chaque case du joueur, deux pièces en volume tombent du ciel l’une sur l’autre.',
-    ring: 'Des pièces tournent autour du pion, puis s’envolent chacune vers une case, où jaillit un « ×2 ».',
-    stamp: 'Un gros « ×2 » tombe du ciel sur chaque case du joueur, y rebondit et s’y plante.',
-    stack: 'Une pile de deux pièces sort de chaque case du joueur, puis double d’un coup.',
+    classic: 'Le dessin actuel : des symboles de pièce partent des cases adverses et arrivent en tourbillon sur le joueur.',
+    drop: 'Un aimant tombe du ciel sur la tête du pion et attire à lui les pièces des cases adverses.',
+    ring: 'Les pièces quittent les cases adverses, viennent tourner autour du pion, puis se fondent en lui.',
+    leap: 'Des pièces en volume jaillissent des cases adverses, retombent autour du pion, puis sautent vers lui.',
+    waves: 'Des ondes partent du pion sur le sol ; à leur passage, les pièces des cases adverses filent vers lui.',
   },
   // Variante de l'effet, choisie dans la barre : { label, values, initial }, ou null
   option: null,
   // Joueurs de la partie factice : celui dont c'est le tour, puis ceux sur qui l'effet se joue
-  players: ['Autre', 'Joueur'],
+  players: ['Adversaire', 'Joueur'],
   // Mise en place de la partie factice, avant l'affichage. spot : la case à l'écart, où se trouve
-  // déjà le joueur SUBJECT. Il possède les cases alentour et, comme en partie, porte déjà
-  // l'étiquette « ×2 » quand l'effet se joue.
+  // déjà le joueur SUBJECT. Son adversaire possède les cases alentour.
   prepare(game, spot, renderer) {
-    // Pas la sienne : l'effet s'y jouerait sous son pion
-    for (const tile of nearestTiles(game, renderer, spot, 6).filter(tile => tile.id !== spot)) {
-      tile.owner = SUBJECT;
+    for (const tile of nearestTiles(game, renderer, spot, 7).filter(tile => tile.id !== spot)) {
+      tile.owner = OTHER;
       tile.level = 1;
     }
-    game.players[SUBJECT].doubleTollTurns = 5;
   },
   // L'effet tel que le moteur le décrit, et le joueur qui joue la main
-  fx: (option, game) => ({ type: 'doubleToll', tileIds: game.tiles.filter(tile => tile.owner === SUBJECT).map(tile => tile.id) }),
+  fx: (option, game) => ({ type: 'magnet', tileIds: game.tiles.filter(tile => tile.owner === OTHER).map(tile => tile.id) }),
   playerId: SUBJECT,
 };
 

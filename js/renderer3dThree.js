@@ -21,6 +21,7 @@ import { buildShield } from './shieldFx.js';
 import { buildNavigator } from './navigatorFx.js';
 import { buildConfuse } from './confuseFx.js';
 import { buildToll } from './tollFx.js';
+import { buildMagnet } from './magnetFx.js';
 
 const TILE_SIZE = 1;
 const TILE_HEIGHT = 1;
@@ -1626,6 +1627,32 @@ export class Renderer3D {
 
   // Aimant GP : des pièces partent des cases adverses et arrivent en tourbillon sur le joueur
   _fxMagnet(fx, playerId) {
+    const pawn = this.tokens[playerId];
+    if (this.fxStyles.magnet && pawn) {
+      // Dessin à l'essai : les pièces partent du dessus des cases adverses ; s'il y en a peu, il
+      // en vient aussi de tout autour
+      const { mesh } = pawn;
+      const size = mesh.scale.x;
+      const sources = (fx.tileIds || []).slice(0, 14)
+        .map(id => this.tileCenters[id]).filter(Boolean)
+        .map(c => new THREE.Vector3(c.x, c.top, c.z));
+      for (let i = sources.length; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        sources.push(new THREE.Vector3(mesh.position.x + Math.cos(angle) * 2.6, pawn.baseY, mesh.position.z + Math.sin(angle) * 2.6));
+      }
+      const magnet = buildMagnet(this.fxStyles.magnet, {
+        mesh, size, top: this._pawnTop(pawn), ground: pawn.baseY, sources, camera: this.camera, gradientMap: this._toonGradient,
+      });
+      this.fxGroup.add(magnet.group);
+      return {
+        update: k => magnet.update(k),
+        cleanup: () => {
+          magnet.dispose();
+          mesh.scale.setScalar(size);
+        },
+      };
+    }
+
     const head = this._headOf(playerId);
     const starts = (fx.tileIds || []).slice(0, 14)
       .map(id => this.tileCenters[id]).filter(Boolean)
@@ -1806,44 +1833,32 @@ export class Renderer3D {
     };
   }
 
-  // Double Péage : un « ×2 » s'élève de chaque case du joueur, sous un symbole de sac d'or (ou
-  // l'un des dessins à l'essai)
+  // Double Péage : des pièces tournent autour du joueur, puis s'envolent chacune vers l'une de ses
+  // cases, où jaillit un « ×2 »
   _fxDoubleToll(fx, playerId) {
-    const head = this._headOf(playerId);
-    const centers = (fx.tileIds || []).slice(0, 14).map(id => this.tileCenters[id]).filter(Boolean);
     const token = this.tokens[playerId];
-    if (this.fxStyles.doubleToll && token) {
-      const { mesh } = token;
-      const size = mesh.scale.x;
-      const toll = buildToll(this.fxStyles.doubleToll, {
-        mesh, size, top: this._pawnTop(token), ground: token.baseY, tiles: centers, camera: this.camera, gradientMap: this._toonGradient,
-      });
-      this.fxGroup.add(toll.group);
-      // L'étiquette de niveau des cases gênerait l'effet, qui se joue au même endroit : elle revient après
-      const levels = (fx.tileIds || []).map(id => (this._ownObjects[id] || [])[1]).filter(Boolean);
-      for (const level of levels) level.visible = false;
-      return {
-        update: k => toll.update(k),
-        cleanup: () => {
-          toll.dispose();
-          mesh.scale.setScalar(size);
-          for (const level of levels) level.visible = true;
-        },
-      };
-    }
-
-    const labels = centers.map(() => this._fxSymbol('×2', 0.36, { fg: '#ffd700' }));
-    const icon = this._fxSymbol('💰', 0.5);
-
+    if (!token) return { update() {} };
+    const { mesh } = token;
+    const size = mesh.scale.x;
+    const tileIds = (fx.tileIds || []).slice(0, 14);
+    const toll = buildToll({
+      mesh,
+      size,
+      top: this._pawnTop(token),
+      ground: token.baseY,
+      tiles: tileIds.map(id => this.tileCenters[id]).filter(Boolean),
+      camera: this.camera,
+    });
+    this.fxGroup.add(toll.group);
+    // L'étiquette de niveau des cases gênerait l'effet, qui se joue au même endroit : elle revient après
+    const levels = tileIds.map(id => (this._ownObjects[id] || [])[1]).filter(Boolean);
+    for (const level of levels) level.visible = false;
     return {
-      update: (k) => {
-        labels.forEach((label, i) => {
-          const t = clamp01((k - (i / Math.max(1, labels.length)) * 0.3) / 0.7);
-          label.position.set(centers[i].x, centers[i].top + 0.35 + t * 0.6, centers[i].z);
-          this._fxScale(label, t <= 0 ? 0 : envelope(t) * (1 + 0.3 * Math.sin(Math.PI * t)));
-        });
-        icon.position.set(head.x, head.y + 0.3 + 0.1 * Math.sin(k * 12), head.z);
-        this._fxScale(icon, envelope(k));
+      update: k => toll.update(k),
+      cleanup: () => {
+        toll.dispose();
+        mesh.scale.setScalar(size);
+        for (const level of levels) level.visible = true;
       },
     };
   }
