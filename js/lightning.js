@@ -11,9 +11,7 @@
 
 import * as THREE from 'three';
 import { boltGrid, burstGrid, BURST_STAGES, EDGE, RIM, CORE } from './lightningArt.js';
-
-const PIXEL = 0.05;  // côté d'un point du dessin, en unités de case
-const TEXEL = 6;     // pixels de texture par point
+import { pixelSprite, PIXEL } from './pixelSprite.js';
 
 const INK = '#0b0b1c';
 const GOLD = '#ffd21f';
@@ -53,67 +51,15 @@ const SPREAD = 0.36;                  // distance du pion à laquelle tombent le
 // Image en cours d'un déroulé : la première ligne dont la fin (première colonne) dépasse t
 const stepAt = (script, t) => script.find(step => t < step[0]) || script[script.length - 1];
 
-// Image en pixel art dont le dessin change au fil de l'animation
-class PixelSprite {
-  constructor(width, height, pixel) {
-    this.canvas = document.createElement('canvas');
-    this.canvas.width = width * TEXEL;
-    this.canvas.height = height * TEXEL;
-    this.ctx = this.canvas.getContext('2d');
-    this.texture = new THREE.CanvasTexture(this.canvas);
-    this.texture.colorSpace = THREE.SRGBColorSpace;
-    this.texture.magFilter = THREE.NearestFilter;
-    this.texture.minFilter = THREE.LinearFilter;
-    this.texture.generateMipmaps = false;
-    this.material = new THREE.SpriteMaterial({ map: this.texture, transparent: true, depthWrite: false, depthTest: false });
-    this.sprite = new THREE.Sprite(this.material);
-    this.sprite.scale.set(width * pixel, height * pixel, 1);
-    this.sprite.frustumCulled = false; // l'accroche peut être hors de l'écran alors que le dessin y est
-    this.sprite.visible = false;
-    this.shown = null;
-  }
-
-  // Affiche un dessin, ou rien (key null). `key` nomme l'image : la texture n'est repeinte que
-  // s'il change. keep(x, y, code) permet de n'en garder qu'une partie.
-  show(key, grid = null, palette = null, keep = null) {
-    if (key === this.shown) return;
-    this.shown = key;
-    this.sprite.visible = key !== null;
-    if (key === null) return;
-    const { ctx } = this;
-    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        const code = grid.cells[y * grid.width + x];
-        if (code === 0 || (keep && !keep(x, y, code))) continue;
-        ctx.fillStyle = palette[code];
-        ctx.fillRect(x * TEXEL, y * TEXEL, TEXEL, TEXEL);
-      }
-    }
-    this.texture.needsUpdate = true;
-  }
-
-  dispose() {
-    this.texture.dispose();
-    this.material.dispose();
-  }
-}
-
-function pixelSprite(group, at, width, height, order, pixel = PIXEL) {
-  const item = new PixelSprite(width, height, pixel);
-  item.sprite.position.copy(at);
-  item.sprite.renderOrder = order;
-  group.add(item.sprite);
-  return item;
-}
-
-function showBolt(item, grid, look) {
+// Montre un éclair sous l'un de ses aspects (ou rien). `tag` distingue les éclairs qu'une même
+// image montre tour à tour.
+export function showBolt(item, grid, look, tag = '') {
   if (!look) {
     item.show(null);
   } else if (look === 'fade') {
-    item.show(look, grid, BOLT, (x, y, code) => code !== EDGE && (x + y) % 2 === 0);
+    item.show(`${tag}|fade`, grid, BOLT, (x, y, code) => code !== EDGE && (x + y) % 2 === 0);
   } else {
-    item.show(look, grid, look === 'flash' ? BOLT_FLASH : BOLT);
+    item.show(`${tag}|${look}`, grid, look === 'flash' ? BOLT_FLASH : BOLT);
   }
 }
 

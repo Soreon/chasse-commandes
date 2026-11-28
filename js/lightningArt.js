@@ -1,44 +1,11 @@
-// Dessins en pixel art de la foudre du Stun : des grilles de points, sans dépendance (donc
-// vérifiables hors navigateur). lightning.js les peint dans des textures.
-//
-// Une grille : { width, height, cells }, où cells[y * width + x] vaut 0 (vide) ou l'un des codes
-// ci-dessous, que la palette traduit en couleur.
+// Dessins en pixel art de la foudre du Stun : des grilles de points (voir pixelGrid.js), que
+// lightning.js peint dans des textures.
 
-export const EDGE = 1;   // liseré sombre autour du dessin
+import { EDGE, createGrid, put, dab, addEdge } from './pixelGrid.js';
+
+export { EDGE };
 export const RIM = 2;    // bord de l'éclair
 export const CORE = 3;   // cœur de l'éclair
-
-function createGrid(width, height) {
-  return { width, height, cells: new Uint8Array(width * height) };
-}
-
-// Pose un point s'il tombe dans la grille ; le code le plus fort l'emporte (le cœur sur le bord)
-function put(grid, x, y, code) {
-  if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) return;
-  const i = y * grid.width + x;
-  if (grid.cells[i] < code) grid.cells[i] = code;
-}
-
-// Carré de `size` points autour de (x, y)
-function dab(grid, x, y, size, code) {
-  const start = -Math.floor((size - 1) / 2);
-  for (let dy = 0; dy < size; dy++) {
-    for (let dx = 0; dx < size; dx++) put(grid, x + start + dx, y + start + dy, code);
-  }
-}
-
-// Liseré : chaque point vide qui touche le dessin par un côté
-function addEdge(grid) {
-  const { width, height, cells } = grid;
-  const full = (x, y) => x >= 0 && y >= 0 && x < width && y < height && cells[y * width + x] > EDGE;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if (cells[y * width + x] !== 0) continue;
-      if (full(x - 1, y) || full(x + 1, y) || full(x, y - 1) || full(x, y + 1)) cells[y * width + x] = EDGE;
-    }
-  }
-  return grid;
-}
 
 // Éclair en zigzag qui traverse la grille de haut en bas ; sa pointe touche le milieu du bas.
 // random : fonction qui rend un nombre dans [0, 1) ; thick : épaisseur du trait en points ;

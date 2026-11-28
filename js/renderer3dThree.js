@@ -15,6 +15,7 @@ import { buildBeam } from './teleportBeams.js';
 import { pixelLabelCanvas } from './pixelLabel.js';
 import { buildPawn, PAWN_HEIGHT } from './pawn.js';
 import { buildLightning } from './lightning.js';
+import { buildDazed } from './dazed.js';
 
 const TILE_SIZE = 1;
 const TILE_HEIGHT = 1;
@@ -119,6 +120,7 @@ export class Renderer3D {
     this.currentRing = null;
     this.currentPlayerId = null;
     this._lightFactor = 1; // la foudre du Stun assombrit puis illumine la scène
+    this.fxStyles = {};    // dessins à l'essai, par type d'effet (voir setFxStyle)
 
     this._textures = {};
     this._labelTextures = new Map();
@@ -1653,8 +1655,15 @@ export class Renderer3D {
     };
   }
 
-  // Stun : une salve d'éclairs tombe du ciel sur le joueur visé, qui sursaute ; puis des étoiles
-  // tournent au-dessus de sa tête pendant qu'il vacille
+  // Pour la page d'essai (essais.html) : joue un effet avec l'un des dessins proposés au lieu du
+  // dessin actuel. style : 'classic' ou rien pour le dessin actuel.
+  setFxStyle(type, style) {
+    this.fxStyles[type] = style && style !== 'classic' ? style : null;
+  }
+
+  // Stun : une salve d'éclairs tombe du ciel sur le joueur visé, qui sursaute ; puis il reste
+  // sonné (des étoiles tournent au-dessus de sa tête pendant qu'il vacille, ou l'un des dessins
+  // à l'essai)
   _fxStun(targetId) {
     const stars = ['💫', '💫', '💫'];
     const token = this.tokens[targetId];
@@ -1662,12 +1671,14 @@ export class Renderer3D {
 
     const { mesh } = token;
     const size = mesh.scale.x;
-    const strike = buildLightning({
-      top: new THREE.Vector3(mesh.position.x, token.baseY + PAWN_HEIGHT * size, mesh.position.z),
-      ground: token.baseY,
-    });
+    const top = new THREE.Vector3(mesh.position.x, token.baseY + PAWN_HEIGHT * size, mesh.position.z);
+    const strike = buildLightning({ top, ground: token.baseY });
     this.fxGroup.add(strike.group);
-    const orbit = this._fxOrbit([targetId], stars, { startAt: STUN_STARS_AT });
+    const dazed = this.fxStyles.stun
+      ? buildDazed(this.fxStyles.stun, { mesh, size, top, ground: token.baseY, camera: this.camera })
+      : null;
+    if (dazed) this.fxGroup.add(dazed.group);
+    const orbit = dazed ? null : this._fxOrbit([targetId], stars, { startAt: STUN_STARS_AT });
     // Matières du pion (les siennes seulement) : elles blanchissent à chaque éclair
     const materials = new Set();
     mesh.traverse((part) => {
@@ -1678,25 +1689,31 @@ export class Renderer3D {
       update: (k) => {
         const t = clamp01(k / STRIKE_SHARE);
         const glow = strike.update(t);
-        orbit.update(k);
+        if (orbit) orbit.update(k);
         // Le temps de la frappe, le ciel s'assombrit ; chaque éclair illumine la scène et le pion
         this._setLightFactor(1 - 0.3 * Math.sin(Math.PI * t) + 0.75 * glow);
-        for (const material of materials) material.emissive.setScalar(0.7 * glow);
+        let shine = glow;
         if (k < STUN_STARS_AT) {
           // Frappé, le pion s'aplatit et tressaute
           const hit = glow >= 0.5;
           mesh.scale.set(size * (hit ? 1.14 : 1), size * (hit ? 0.84 : 1), size * (hit ? 1.14 : 1));
           mesh.rotation.z = hit ? Math.sign(Math.sin(k * 300)) * 0.16 : 0;
+        } else if (dazed) {
+          // Le dessin à l'essai anime lui-même le pion
+          shine = Math.max(glow, dazed.update((k - STUN_STARS_AT) / (1 - STUN_STARS_AT)));
         } else {
           mesh.scale.setScalar(size);
         }
+        for (const material of materials) material.emissive.setScalar(0.7 * shine);
       },
       cleanup: () => {
-        orbit.cleanup();
+        if (orbit) orbit.cleanup();
+        if (dazed) dazed.dispose();
         strike.dispose();
         this._setLightFactor(1);
         for (const material of materials) material.emissive.setScalar(0);
         mesh.scale.setScalar(size);
+        mesh.rotation.z = 0;
       },
     };
   }
