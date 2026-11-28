@@ -1,6 +1,11 @@
 // Map Builder - Editeur de plateaux
 // Porte depuis command-board/src/map-builder/
 
+import { checkBoard } from './boardCheck.js';
+import { generateBoard, BOARD_SIZES } from './boardGenerator.js';
+import { randomSeed } from './engine/rng.js';
+import { ZONE_IDS, ZONE_COLORS, zoneDefsOf } from './zones.js';
+
 const cellClassToDataMap = {
   blueCheckpoint: { type: 'checkpoint', color: 'blue' },
   greenCheckpoint: { type: 'checkpoint', color: 'green' },
@@ -28,9 +33,10 @@ const cellDataToClassMap = {
   start: 'startPanel',
 };
 
-// Zone colors for the editor
-const ZONE_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c'];
-const ZONE_IDS = ['A', 'B', 'C', 'D', 'E', 'F'];
+// Parties d'essai entre IA qu'un plateau généré doit mener à leur terme avant d'être proposé
+const PLAYTEST_GAMES = 3;
+// Nombre de lignes de problèmes affichées par « Valider »
+const MAX_REPORT_LINES = 12;
 
 export class MapBuilder {
   constructor() {
@@ -42,6 +48,8 @@ export class MapBuilder {
     this.savedBoardsList = null;
     this.statusEl = null;
     this.zoneSelector = null;
+    this.generatorSize = null;
+    this.generateButton = null;
 
     this.usedCheckpoints = new Set();
     this.isStartPanelUsed = false;
@@ -65,6 +73,18 @@ export class MapBuilder {
     this.savedBoardsList = containerEl.querySelector('#builder-boards-list');
     this.statusEl = containerEl.querySelector('#builder-status');
     this.zoneSelector = containerEl.querySelector('#builder-zone');
+    this.generatorSize = containerEl.querySelector('#builder-gen-size');
+    this.generateButton = containerEl.querySelector('#builder-generate');
+
+    // Tailles proposées par le générateur
+    for (const [key, preset] of Object.entries(BOARD_SIZES)) {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = `${preset.name} (${preset.tiles[0]} à ${preset.tiles[1]} cases)`;
+      this.generatorSize.appendChild(opt);
+    }
+    this.generatorSize.value = 'medium';
+    this.generateButton.addEventListener('click', () => this._generate());
 
     // Events
     this.imageSelector.addEventListener('change', () => this._onElementSelect());
@@ -321,23 +341,7 @@ export class MapBuilder {
   }
 
   _buildZoneDefs() {
-    const boardData = this._getBoardData();
-    const zonesMap = {};
-    for (let r = 0; r < boardData.length; r++) {
-      for (let c = 0; c < boardData[r].length; c++) {
-        const d = boardData[r][c];
-        if (d.zone) {
-          if (!zonesMap[d.zone]) zonesMap[d.zone] = [];
-          zonesMap[d.zone].push([r, c]);
-        }
-      }
-    }
-    return Object.entries(zonesMap).map(([id, tiles], i) => ({
-      id,
-      name: `Zone ${id}`,
-      color: ZONE_COLORS[ZONE_IDS.indexOf(id)] || ZONE_COLORS[i % ZONE_COLORS.length],
-      tiles,
-    }));
+    return zoneDefsOf(this._getBoardData());
   }
 
   _loadBoard() {
@@ -423,72 +427,62 @@ export class MapBuilder {
     }
   }
 
-  // === Validation ===
+  // === Génération automatique ===
 
-  _validate() {
-    const boardData = this._getBoardData();
-    const msgs = [];
-    const flat = [];
+  // Remplace la grille par un plateau tiré au hasard (voir boardGenerator.js). Le plateau précédent
+  // reste dans l'historique : Ctrl+Z le fait revenir.
+  async _generate() {
+    this.generateButton.disabled = true;
+    this._setStatus('Génération en cours…');
+    // Laisser le message s'afficher : la génération et ses parties d'essai occupent le navigateur
+    await new Promise(resolve => setTimeout(resolve, 30));
 
-    for (const row of boardData) {
-      for (const cell of row) {
-        let code = ' ';
-        if (cell.type === 'checkpoint') {
-          code = { blue: 'B', green: 'G', red: 'R', yellow: 'Y' }[cell.color] || '?';
-        } else if (cell.type === 'damage') {
-          code = cell.hasDice ? 'D' : 'P';
-        } else if (cell.type === 'teleporter') {
-          code = cell.direction === 'horizontal' ? 'H' : 'V';
-        } else if (cell.type === 'bonus') code = 'O';
-        else if (cell.type === 'command') code = 'C';
-        else if (cell.type === 'booster') code = 'M';
-        else if (cell.type === 'special') code = 'S';
-        else if (cell.type === 'start') code = 'A';
-        flat.push(code);
+    let result = null;
+    // Une graine peut ne rien donner : on en essaie quelques-unes
+    for (let attempt = 0; attempt < 5 && !result; attempt++) {
+      try {
+        result = generateBoard({
+          seed: randomSeed(),
+          size: this.generatorSize.value,
+          reference: this.presetBoards,
+          playtest: PLAYTEST_GAMES,
+        });
+      } catch (error) {
+        console.warn(error);
       }
     }
-
-    if (!flat.includes('A')) msgs.push('Il manque la case Départ.');
-    if (!flat.includes('B') || !flat.includes('G') || !flat.includes('R') || !flat.includes('Y')) {
-      msgs.push('Il manque un ou plusieurs checkpoints (4 requis).');
+    this.generateButton.disabled = false;
+    if (!result) {
+      this._setStatus('La génération n\'a rien donné, réessayez.');
+      return;
     }
 
-    for (let i = 0; i < flat.length; i++) {
-      if (flat[i] === ' ') continue;
-      const neighbors = this._getNeighborCodes(flat, i);
-      const nonEmpty = neighbors.filter(n => n !== ' ');
-      if (nonEmpty.length < 2 && flat[i] !== 'H' && flat[i] !== 'V') {
-        const r = Math.floor(i / this.gridSize), c = i % this.gridSize;
-        msgs.push(`Case isolée en (${r}, ${c}).`);
-      }
-      if (flat[i] === 'D' && !neighbors.includes('P')) {
-        const r = Math.floor(i / this.gridSize), c = i % this.gridSize;
-        msgs.push(`Prize Cube en (${r}, ${c}) sans case de dégâts voisine.`);
-      }
-    }
-
-    if (msgs.length === 0) {
-      this._setStatus('Le plateau est valide !');
-      alert('Le plateau est valide !');
-    } else {
-      this._setStatus(`${msgs.length} problème(s) détecté(s).`);
-      alert(msgs.join('\n'));
-    }
-    return msgs.length === 0;
+    this._loadBoardData(result.board.grid);
+    this._addHistory();
+    const { tiles, zones, junctions, lap } = result.metrics;
+    this._setStatus(`Plateau généré : ${tiles} cases, ${zones.length} zones, ${junctions} carrefours, tour complet en ${lap} pas. `
+      + `${result.playtest.games} parties d'essai entre IA terminées en ${result.playtest.turns} tours environ. `
+      + 'Ctrl+Z pour retrouver le plateau précédent.');
   }
 
-  _getNeighborCodes(flat, idx) {
-    const r = Math.floor(idx / this.gridSize), c = idx % this.gridSize;
-    const codes = [];
-    if (r > 0) codes.push(flat[(r - 1) * this.gridSize + c]);
-    else codes.push(' ');
-    if (r < this.gridSize - 1) codes.push(flat[(r + 1) * this.gridSize + c]);
-    else codes.push(' ');
-    if (c > 0) codes.push(flat[r * this.gridSize + (c - 1)]);
-    else codes.push(' ');
-    if (c < this.gridSize - 1) codes.push(flat[r * this.gridSize + (c + 1)]);
-    else codes.push(' ');
-    return codes;
+  // === Validation ===
+
+  // Même vérification que celle du générateur (boardCheck.js) : Départ et checkpoints, cases
+  // toutes reliées et sans impasse, téléporteurs qui relient bien deux cases, tour complet possible.
+  _validate() {
+    const { ok, errors, warnings } = checkBoard({ grid: this._getBoardData() });
+    const lines = [...errors, ...warnings.map(warning => `À noter : ${warning}`)];
+    const shown = lines.slice(0, MAX_REPORT_LINES);
+    if (lines.length > shown.length) shown.push(`… et ${lines.length - shown.length} autre(s).`);
+
+    if (ok) {
+      this._setStatus(warnings.length === 0 ? 'Le plateau est valide !' : `Plateau valide, ${warnings.length} remarque(s).`);
+      alert(['Le plateau est valide !', ...shown].join('\n'));
+    } else {
+      this._setStatus(`${errors.length} problème(s) détecté(s).`);
+      alert(shown.join('\n'));
+    }
+    return ok;
   }
 
   // === Grid shifting ===

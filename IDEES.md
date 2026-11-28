@@ -25,8 +25,6 @@ Liste mise de côté après la revue du 27/11/2026. Rien de tout cela n'est comm
 
 - Export / import d'un plateau en fichier JSON.
 - Bouton « Tester ce plateau » qui lance une partie directement.
-- Vérification que toutes les cases sont reliées entre elles (aujourd'hui seules les cases
-  isolées sont détectées).
 - Conserver le nom des zones à la sauvegarde (elles sont renommées « Zone A », « Zone B »…).
 - Plus de 6 zones, grilles non carrées, boutons Annuler / Rétablir visibles (Ctrl+Z / Ctrl+Y existent déjà).
 
