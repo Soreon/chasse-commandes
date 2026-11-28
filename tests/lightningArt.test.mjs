@@ -1,17 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { boltGrid, burstGrid, cloudGrid, BURST_STAGES, EDGE, RIM } from '../js/lightningArt.js';
+import { boltGrid, burstGrid, BURST_STAGES, EDGE, RIM } from '../js/lightningArt.js';
 import { createRng } from '../js/engine/rng.js';
 
 const at = (grid, x, y) => grid.cells[y * grid.width + x];
 const drawn = (grid, x, y) => at(grid, x, y) > EDGE;
 
-// Les formes d'éclair dont se servent les mises en scène
+// Les deux formes d'éclair de la salve : le gros, et les fins
 const SHAPES = [
   { width: 41, height: 120, thick: 3, forks: 2 },
   { width: 31, height: 110, thick: 2, forks: 1 },
-  { width: 25, height: 26, thick: 3, forks: 0, stride: [4, 7] },
 ];
 
 test('un éclair va du haut de la grille à sa pointe, au milieu du bas, sans trou', () => {
@@ -67,7 +66,7 @@ test('la même suite de hasard redonne le même éclair', () => {
   assert.deepEqual(draw().cells, draw().cells);
 });
 
-test('éclat et nuage : dessins centrés, entourés de leur liseré', () => {
+test('éclat d\'impact : un dessin centré à chaque image', () => {
   for (let stage = 0; stage < BURST_STAGES; stage++) {
     const grid = burstGrid(stage);
     for (let y = 0; y < grid.height; y++) {
@@ -79,11 +78,4 @@ test('éclat et nuage : dessins centrés, entourés de leur liseré', () => {
     }
     assert.ok(grid.cells.some(code => code > EDGE));
   }
-
-  const cloud = cloudGrid();
-  for (let x = 0; x < cloud.width; x++) {
-    assert.ok(!drawn(cloud, x, 0) && !drawn(cloud, x, cloud.height - 1), 'le nuage touche le haut ou le bas');
-  }
-  // L'éclair sort du milieu de la base : elle doit être pleine à cet endroit
-  assert.ok(drawn(cloud, (cloud.width - 1) / 2, 11));
 });

@@ -14,7 +14,7 @@ import { buildEnvironment } from './environment.js';
 import { buildBeam } from './teleportBeams.js';
 import { pixelLabelCanvas } from './pixelLabel.js';
 import { buildPawn, PAWN_HEIGHT } from './pawn.js';
-import { buildLightning, DEFAULT_LIGHTNING } from './lightning.js';
+import { buildLightning } from './lightning.js';
 
 const TILE_SIZE = 1;
 const TILE_HEIGHT = 1;
@@ -118,8 +118,7 @@ export class Renderer3D {
     this.tokens = {};          // id de joueur -> { mesh, badge, badgeKey, baseY, animating }
     this.currentRing = null;
     this.currentPlayerId = null;
-    this.lightningStyle = DEFAULT_LIGHTNING; // dessin de la foudre du Stun
-    this._lightFactor = 1;                   // la foudre assombrit puis illumine la scène
+    this._lightFactor = 1; // la foudre du Stun assombrit puis illumine la scène
 
     this._textures = {};
     this._labelTextures = new Map();
@@ -1654,13 +1653,8 @@ export class Renderer3D {
     };
   }
 
-  // Choisit le dessin de la foudre du Stun (voir LIGHTNING_STYLES dans lightning.js)
-  setLightningStyle(style) {
-    this.lightningStyle = style;
-  }
-
-  // Stun : la foudre tombe du ciel sur le joueur visé, qui sursaute ; puis des étoiles tournent
-  // au-dessus de sa tête pendant qu'il vacille
+  // Stun : une salve d'éclairs tombe du ciel sur le joueur visé, qui sursaute ; puis des étoiles
+  // tournent au-dessus de sa tête pendant qu'il vacille
   _fxStun(targetId) {
     const stars = ['💫', '💫', '💫'];
     const token = this.tokens[targetId];
@@ -1668,10 +1662,9 @@ export class Renderer3D {
 
     const { mesh } = token;
     const size = mesh.scale.x;
-    const strike = buildLightning(this.lightningStyle, {
+    const strike = buildLightning({
       top: new THREE.Vector3(mesh.position.x, token.baseY + PAWN_HEIGHT * size, mesh.position.z),
       ground: token.baseY,
-      right: new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).setY(0).normalize(),
     });
     this.fxGroup.add(strike.group);
     const orbit = this._fxOrbit([targetId], stars, { startAt: STUN_STARS_AT });

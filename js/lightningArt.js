@@ -2,12 +2,11 @@
 // vérifiables hors navigateur). lightning.js les peint dans des textures.
 //
 // Une grille : { width, height, cells }, où cells[y * width + x] vaut 0 (vide) ou l'un des codes
-// ci-dessous, que chaque palette traduit en couleur.
+// ci-dessous, que la palette traduit en couleur.
 
 export const EDGE = 1;   // liseré sombre autour du dessin
-export const RIM = 2;    // bord de l'éclair, corps du nuage
-export const CORE = 3;   // cœur de l'éclair, reflet du nuage
-export const SHADE = 4;  // dessous du nuage
+export const RIM = 2;    // bord de l'éclair
+export const CORE = 3;   // cœur de l'éclair
 
 function createGrid(width, height) {
   return { width, height, cells: new Uint8Array(width * height) };
@@ -43,8 +42,8 @@ function addEdge(grid) {
 
 // Éclair en zigzag qui traverse la grille de haut en bas ; sa pointe touche le milieu du bas.
 // random : fonction qui rend un nombre dans [0, 1) ; thick : épaisseur du trait en points ;
-// forks : nombre de ramifications ; stride : hauteur d'une diagonale, [mini, maxi].
-export function boltGrid(random, { width, height, thick = 3, forks = 2, stride = [6, 11] }) {
+// forks : nombre de ramifications.
+export function boltGrid(random, { width, height, thick = 3, forks = 2 }) {
   const grid = createGrid(width, height);
   const margin = thick + 2;
   const hold = x => Math.max(margin, Math.min(width - 1 - margin, x));
@@ -59,7 +58,7 @@ export function boltGrid(random, { width, height, thick = 3, forks = 2, stride =
   let y = height - 3;
   let lean = random() < 0.5 ? -1 : 1;
   while (y > 0) {
-    const rise = Math.min(y, pick(stride[0], stride[1]));
+    const rise = Math.min(y, pick(6, 11));
     // Jamais plus d'un point de côté par rangée : le trait resterait en morceaux
     const toX = hold(x + lean * Math.min(pick(3, 6), rise));
     for (let step = 1; step <= rise; step++) line.push({ x: Math.round(x + ((toX - x) * step) / rise), y: y - step });
@@ -128,29 +127,5 @@ export function burstGrid(stage, size = 15) {
     }
   }
   if (stage === 0) dab(grid, centre, centre, 3, CORE);
-  return addEdge(grid);
-}
-
-// Nuage d'orage à fond plat : des disques qui se chevauchent, un reflet sur le dessus, une ombre
-// dessous. L'éclair sort du milieu de sa base.
-export function cloudGrid() {
-  const width = 29;
-  const height = 14;
-  const floor = 11; // dernière rangée pleine
-  const puffs = [[6.5, 8.5, 4.2], [12.5, 5.8, 5.2], [19.5, 7, 4.4], [23.5, 9, 3.2], [9.5, 9, 3.5], [13.5, 9, 3.5], [17.5, 9, 3.5]];
-  const grid = createGrid(width, height);
-  for (let y = 1; y <= floor; y++) {
-    for (let x = 1; x < width - 1; x++) {
-      if (puffs.some(([cx, cy, r]) => (x - cx) ** 2 + (y - cy) ** 2 <= r * r)) put(grid, x, y, RIM);
-    }
-  }
-  const body = (x, y) => y >= 0 && grid.cells[y * width + x] !== 0;
-  for (let y = 1; y <= floor; y++) {
-    for (let x = 1; x < width - 1; x++) {
-      if (!body(x, y)) continue;
-      if (y >= floor - 1) grid.cells[y * width + x] = SHADE;
-      else if (!body(x, y - 1)) grid.cells[y * width + x] = CORE;
-    }
-  }
   return addEdge(grid);
 }
