@@ -1,6 +1,6 @@
 // Banc d'essai (essais.html) : montre les dessins proposés pour un effet, à côté du dessin actuel,
 // sans avoir à lancer une partie ni à attendre que l'effet soit joué. L'effet à l'essai est
-// décrit par TRIAL, plus bas ; en ce moment : les dés du Double Dé et du Triple Dé.
+// décrit par TRIAL, plus bas ; en ce moment : le Protecteur GP.
 //
 // Chaque vue est la vraie vue 3D du jeu (Renderer3D) sur un vrai plateau. Seule la partie est
 // factice : un joueur attend seul sur une case, et l'effet s'y joue.
@@ -14,31 +14,34 @@ import { TileType } from './engine/board.js';
 import { PLAYER_COLORS } from './engine/player.js';
 import { TIMING } from './controller.js';
 import { Renderer3D } from './renderer3dThree.js';
-import { DICE_STYLES } from './diceFx.js';
+import { SHIELD_STYLES } from './shieldFx.js';
 
 const OTHER = 0;   // le joueur dont c'est le tour, resté sur la case Départ
 const SUBJECT = 1; // celui sur qui l'effet se joue, seul sur sa case
 
 // L'effet à l'essai
 const TRIAL = {
-  title: 'Double Dé et Triple Dé',
-  type: 'dice', // type d'effet, pour Renderer3D.setFxStyle
+  title: 'Protecteur GP',
+  type: 'shield', // type d'effet, pour Renderer3D.setFxStyle
   // Les dessins montrés : l'actuel ('classic'), puis les propositions, numérotées
-  names: { classic: 'Symboles de dés', ...DICE_STYLES },
-  short: { classic: 'Actuel', burst: 'Jet', rain: 'Ciel', pixel: 'Pixel', split: 'Dédoublé' }, // onglets
+  names: { classic: 'Bulle et symbole', ...SHIELD_STYLES },
+  short: { classic: 'Actuel', drop: 'Ciel', ring: 'Ronde', dome: 'Dôme', bubble: 'Bulle' }, // onglets
   notes: {
-    classic: 'Le dessin actuel : des symboles de dé tournent et rebondissent au-dessus du joueur.',
-    burst: 'De vrais dés en volume sortent du pion, montent en tournoyant et rebondissent en l’air.',
-    rain: 'Les dés tombent du ciel, rebondissent sur la case autour du pion, puis sautent vers lui.',
-    pixel: 'Des dés dessinés, animés image par image, culbutent au-dessus du pion et scintillent.',
-    split: 'Un gros dé tourne au-dessus du pion, tremble, puis éclate en deux ou trois dés.',
+    classic: 'Le dessin actuel : une bulle lisse se referme sur le joueur, sous un symbole de bouclier.',
+    drop: 'Un bouclier tombe du ciel et se plante devant le pion, luit, puis se fond en lui.',
+    ring: 'Trois boucliers tournent autour du pion, passent derrière lui, se resserrent et s’y fondent.',
+    dome: 'De petits cubes bleus montent en anneaux et se referment en dôme au-dessus du pion.',
+    bubble: 'Une bulle dessinée, en pixel art, se referme sur le pion par à-coups, puis éclate.',
   },
-  // Variante de l'effet, choisie dans la barre
-  option: { label: 'Main', values: { 2: 'Double Dé', 3: 'Triple Dé' }, initial: '2' },
-  // Mise en place de la partie factice, avant l'affichage
-  prepare() {},
+  // Variante de l'effet, choisie dans la barre : { label, values, initial }, ou null
+  option: null,
+  // Mise en place de la partie factice, avant l'affichage : comme en partie, le joueur porte
+  // déjà l'étiquette de sa protection quand l'effet se joue
+  prepare(game, subject) {
+    subject.gpProtector = 1;
+  },
   // L'effet tel que le moteur le décrit, et le joueur qui joue la main
-  fx: option => ({ type: 'dice', count: Number(option) }),
+  fx: () => ({ type: 'shield' }),
   playerId: SUBJECT,
 };
 
@@ -52,7 +55,7 @@ const SMALL_SCREEN = window.matchMedia('(max-width: 900px), (max-height: 500px)'
 
 // Réglages de la barre. `ambiance` nomme un plateau (chacun des quatre a la sienne) ; `style` est
 // le dessin montré sur petit écran ; `option` la variante de l'effet.
-const state = { ambiance: 'Verger', speed: 1, mode: 'turns', style: STYLES[1], option: TRIAL.option.initial };
+const state = { ambiance: 'Verger', speed: 1, mode: 'turns', style: STYLES[1], option: TRIAL.option ? TRIAL.option.initial : null };
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const bench = document.getElementById('bench');

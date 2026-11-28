@@ -17,6 +17,7 @@ import { buildPawn, PAWN_HEIGHT } from './pawn.js';
 import { buildLightning } from './lightning.js';
 import { buildDazed } from './dazed.js';
 import { buildDice } from './diceFx.js';
+import { buildShield } from './shieldFx.js';
 
 const TILE_SIZE = 1;
 const TILE_HEIGHT = 1;
@@ -1734,52 +1735,55 @@ export class Renderer3D {
     };
   }
 
-  // Double Dé, Triple Dé : les dés jaillissent et tournent en rebondissant au-dessus du joueur
-  // (des symboles, ou l'un des dessins à l'essai)
+  // Double Dé, Triple Dé : les dés tombent du ciel, rebondissent sur la case autour du joueur,
+  // puis sautent vers lui
   _fxDice(fx, playerId) {
     const token = this.tokens[playerId];
-    if (this.fxStyles.dice && token) {
+    if (!token) return { update() {} };
+    const { mesh } = token;
+    const size = mesh.scale.x;
+    const dice = buildDice({
+      count: fx.count || 2,
+      mesh,
+      size,
+      top: new THREE.Vector3(mesh.position.x, token.baseY + PAWN_HEIGHT * size, mesh.position.z),
+      ground: token.baseY,
+      gradientMap: this._toonGradient,
+    });
+    this.fxGroup.add(dice.group);
+    return {
+      update: k => dice.update(k),
+      cleanup: () => {
+        dice.dispose();
+        mesh.scale.setScalar(size);
+      },
+    };
+  }
+
+  // Protecteur GP : une bulle se referme autour du joueur, sous un symbole de bouclier (ou l'un
+  // des dessins à l'essai)
+  _fxShield(playerId) {
+    const token = this.tokens[playerId];
+    if (this.fxStyles.shield && token) {
       const { mesh } = token;
       const size = mesh.scale.x;
-      const dice = buildDice(this.fxStyles.dice, {
-        count: fx.count || 2,
+      const shield = buildShield(this.fxStyles.shield, {
         mesh,
         size,
         top: new THREE.Vector3(mesh.position.x, token.baseY + PAWN_HEIGHT * size, mesh.position.z),
         ground: token.baseY,
-        right: new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).setY(0).normalize(),
-        gradientMap: this._toonGradient,
+        camera: this.camera,
       });
-      this.fxGroup.add(dice.group);
+      this.fxGroup.add(shield.group);
       return {
-        update: k => dice.update(k),
+        update: k => shield.update(k),
         cleanup: () => {
-          dice.dispose();
+          shield.dispose();
           mesh.scale.setScalar(size);
         },
       };
     }
 
-    const head = this._headOf(playerId);
-    const dice = Array.from({ length: fx.count || 2 }, () => this._fxSymbol('🎲', 0.46));
-    return {
-      update: (k) => {
-        dice.forEach((die, i) => {
-          const angle = k * Math.PI * 3 + (i / dice.length) * Math.PI * 2;
-          const radius = 0.5 * clamp01(k / 0.2);
-          die.position.set(
-            head.x + Math.cos(angle) * radius,
-            head.y + 0.3 + Math.abs(Math.sin(k * Math.PI * 4 + i)) * 0.3,
-            head.z + Math.sin(angle) * radius,
-          );
-          this._fxScale(die, envelope(k));
-        });
-      },
-    };
-  }
-
-  // Protecteur GP : une bulle se referme autour du joueur
-  _fxShield(playerId) {
     const head = this._headOf(playerId);
     const bubble = new THREE.Mesh(
       new THREE.SphereGeometry(0.55, 24, 16),
