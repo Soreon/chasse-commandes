@@ -2,7 +2,9 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0e1a">
+  <meta name="mobile-web-app-capable" content="yes">
   <title>Command Board - Kingdom Hearts</title>
   <link rel="icon" href="images/dice.png">
   <link rel="stylesheet" href="css/style.css">
@@ -86,12 +88,15 @@
   <div id="game-screen" class="screen">
     <!-- Barre du haut -->
     <div id="hud-top">
+      <!-- Sur téléphone, les commandes ci-dessous sont repliées derrière ce bouton -->
+      <button id="btn-hud-menu" class="hud-btn" aria-label="Commandes de la partie" aria-expanded="false">&#9776;</button>
       <div id="hud-controls">
         <button id="btn-quit" class="hud-btn" title="Revenir au menu (la partie est sauvegardée à chaque tour)">Menu</button>
         <button id="btn-pause" class="hud-btn" title="Mettre la partie en pause">Pause</button>
         <button id="btn-speed" class="hud-btn" title="Vitesse des animations et des tours de l'IA">Vitesse ×1</button>
         <button id="btn-journal" class="hud-btn" title="Télécharger le journal détaillé de la partie (déroulé du jeu et informations techniques)">Journal</button>
         <button id="btn-follow" class="hud-btn active" title="La caméra suit le joueur dont c'est le tour">Suivi caméra</button>
+        <button id="btn-fullscreen" class="hud-btn" title="Afficher le jeu sur tout l'écran" hidden>Plein écran</button>
         <div id="debug-menu">
           <button id="debug-toggle" class="hud-btn" title="Réglages de la caméra">&#9881;</button>
           <div id="debug-panel" class="hidden">
@@ -117,6 +122,8 @@
 
       <div id="board-minimap" title="Cliquer pour amener la caméra sur une case">
         <canvas id="board-canvas"></canvas>
+        <!-- Sur téléphone : revenir sur le joueur après avoir déplacé la vue à la main -->
+        <button id="btn-recenter" class="hidden" aria-label="Recentrer la vue sur le joueur et reprendre le suivi">&#8982; Suivre</button>
       </div>
 
       <div id="players-panel">
@@ -302,7 +309,7 @@
         <p>Atteignez l'objectif de fortune (GP en poche + valeur de vos cases), puis passez ou arrêtez-vous sur la case Départ pour gagner !</p>
         <h3>Tour de jeu</h3>
         <p>1. Jouez une main de cartes si vous le souhaitez : une combinaison de cartes pour un effet spécial.</p>
-        <p>2. Lancez le dé et déplacez-vous. Aux intersections, cliquez sur la flèche de votre choix.</p>
+        <p>2. Lancez le dé et déplacez-vous. Aux intersections, choisissez la flèche de votre choix.</p>
         <p>3. Résolvez la case d'arrivée.</p>
         <h3>Mains de cartes</h3>
         <p><strong>Stun (1 Attaque) :</strong> un adversaire passe son prochain tour.</p>

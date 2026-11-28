@@ -13,6 +13,7 @@ import { Renderer3D } from './renderer3dThree.js';
 import { MapBuilder } from './mapBuilder.js';
 import { escapeHtml, tileTooltipHTML, showTooltip, hideTooltip } from './tooltip.js';
 import { SessionLog, hasStoredJournal, downloadStoredJournal } from './sessionLog.js';
+import { coveredInsets } from './viewInsets.js';
 
 const $ = id => document.getElementById(id);
 const gp = n => n.toLocaleString('fr-FR');
@@ -178,6 +179,8 @@ $('btn-resume').addEventListener('click', () => {
 function launch(game) {
   endSession();
   showScreen('game-screen');
+  enterFullscreenOnPhone();
+  keepScreenAwake(true);
 
   $('goal-value').textContent = gp(game.gpGoal);
   $('hud-bottom').style.display = game.players.some(p => p.isHuman) ? '' : 'none';
@@ -213,9 +216,9 @@ function launch(game) {
   session = { id: ++sessionCounter, game, controller, renderer2d, renderer3d, log, cancelAsk: null, pick: null, relabel: null };
 
   const tooltipEl = $('tile-tooltip');
-  const hover = (tileId, x, y) => {
+  const hover = (tileId, x, y, pointerType) => {
     if (tileId === null) hideTooltip(tooltipEl);
-    else showTooltip(tooltipEl, tileTooltipHTML(game, tileId), x, y);
+    else showTooltip(tooltipEl, tileTooltipHTML(game, tileId), x, y, pointerType === 'touch');
   };
   renderer3d.onTileHover = hover;
   renderer3d.onTileClick = hover; // au doigt, un appui sur une case affiche ses informations
@@ -237,6 +240,7 @@ function launch(game) {
   };
 
   refreshControlButtons();
+  updateViewInsets(true);
 
   // Le plateau 3D lit d'abord les images des cases, puis la partie démarre
   const mine = session;
@@ -257,6 +261,7 @@ function endSession() {
   if (ended.cancelAsk) ended.cancelAsk();
   if (ended.pick) ended.pick.finish(null);
   session = null;
+  keepScreenAwake(false);
   ended.log.ui('fin de session', { over: ended.game.over, turn: ended.game.turnNumber });
   ended.log.dispose();
   ended.renderer2d.dispose();
@@ -264,6 +269,7 @@ function endSession() {
   closeModal();
   closeBanner();
   hideTooltip($('tile-tooltip'));
+  setHudMenu(false);
   $('quit-overlay').classList.add('hidden');
   $('announce-banner').classList.add('hidden');
 }
@@ -273,12 +279,27 @@ function endSession() {
 function refreshControlButtons() {
   $('btn-speed').textContent = `Vitesse ×${settings.speed}`;
   $('btn-follow').classList.toggle('active', settings.follow);
+  $('btn-recenter').classList.toggle('hidden', settings.follow);
   const paused = !!session?.controller.paused;
   $('btn-pause').textContent = paused ? 'Reprendre' : 'Pause';
   $('btn-pause').classList.toggle('active', paused);
+  const fullscreen = !!document.fullscreenElement;
+  $('btn-fullscreen').hidden = !document.fullscreenEnabled;
+  $('btn-fullscreen').textContent = fullscreen ? 'Quitter le plein écran' : 'Plein écran';
+  $('btn-fullscreen').classList.toggle('active', fullscreen);
 }
 
-$('btn-quit').addEventListener('click', () => $('quit-overlay').classList.remove('hidden'));
+// Sur téléphone, les commandes sont repliées derrière le bouton ☰
+function setHudMenu(open) {
+  $('hud-top').classList.toggle('menu-open', open);
+  $('btn-hud-menu').setAttribute('aria-expanded', String(open));
+}
+$('btn-hud-menu').addEventListener('click', () => setHudMenu(!$('hud-top').classList.contains('menu-open')));
+
+$('btn-quit').addEventListener('click', () => {
+  setHudMenu(false);
+  $('quit-overlay').classList.remove('hidden');
+});
 $('btn-quit-cancel').addEventListener('click', () => $('quit-overlay').classList.add('hidden'));
 $('btn-quit-confirm').addEventListener('click', () => {
   if (session) session.log.ui('retour au menu');
@@ -311,14 +332,129 @@ $('btn-speed').addEventListener('click', () => {
   refreshControlButtons();
 });
 
-$('btn-follow').addEventListener('click', () => {
-  settings.follow = !settings.follow;
+function setFollowSetting(follow) {
+  settings.follow = follow;
   saveSettings();
   if (session) {
     session.renderer3d.setFollow(settings.follow);
     session.log.ui('suivi caméra', { follow: settings.follow });
   }
   refreshControlButtons();
+}
+$('btn-follow').addEventListener('click', () => setFollowSetting(!settings.follow));
+// Sur téléphone, faire glisser le plateau coupe le suivi : ce bouton y revient d'un appui
+$('btn-recenter').addEventListener('click', () => setFollowSetting(true));
+
+// === Plein écran et veille ===
+
+// Téléphone : écran tactile dont le petit côté est étroit
+const isPhone = () => window.matchMedia('(pointer: coarse)').matches && Math.min(window.screen.width, window.screen.height) <= 600;
+
+function requestFullscreen() {
+  if (!document.fullscreenEnabled || document.fullscreenElement) return;
+  // Refusé hors d'un geste de l'utilisateur : sans gravité, le jeu reste dans sa fenêtre
+  document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+}
+
+// Sur téléphone, les barres du navigateur prennent une bonne part de l'écran : une partie se
+// lance en plein écran (le bouton des commandes permet d'en sortir)
+function enterFullscreenOnPhone() {
+  if (isPhone()) requestFullscreen();
+}
+
+$('btn-fullscreen').addEventListener('click', () => {
+  setHudMenu(false);
+  if (document.fullscreenElement) document.exitFullscreen();
+  else requestFullscreen();
+});
+document.addEventListener('fullscreenchange', refreshControlButtons);
+
+// Pendant une partie, l'écran ne se met pas en veille (les tours des adversaires se regardent
+// sans toucher l'écran). Le verrou tombe quand la page passe à l'arrière-plan : on le reprend.
+let wakeLock = null;
+async function keepScreenAwake(on) {
+  try {
+    if (on && !wakeLock && 'wakeLock' in navigator && document.visibilityState === 'visible') {
+      const lock = await navigator.wakeLock.request('screen');
+      lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; });
+      wakeLock = lock;
+      if (!session) keepScreenAwake(false); // partie quittée pendant la demande
+    } else if (!on && wakeLock) {
+      const lock = wakeLock;
+      wakeLock = null;
+      await lock.release();
+    }
+  } catch { /* refusé (économie d'énergie, page masquée) : sans gravité */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && session) keepScreenAwake(true);
+});
+
+// === Place prise par l'interface sur le plateau (téléphone) ===
+
+const compactLayout = window.matchMedia('(max-width: 720px), (max-height: 500px)');
+// Éléments posés sur le plateau, et le bord qu'ils occupent ('auto' : selon leur forme)
+const BOARD_COVERS = [['hud-top', 'top'], ['hud-bottom', 'bottom'], ['players-panel', 'auto'], ['modal-content', 'auto']];
+const MIN_FREE_SHARE = 0.4; // part de la largeur et de la hauteur du plateau qui reste toujours libre
+// Écran bas (téléphone en paysage) : la vue vise un peu plus bas encore, pour que les annonces
+// affichées en haut ne tombent pas sur le pion suivi
+const lowScreen = window.matchMedia('(max-height: 500px)');
+const ANNOUNCE_ROOM = 36;
+
+// Mesure ce que l'interface recouvre sur chaque bord du plateau. La vue 3D vise alors le centre
+// de la zone libre, et les bandeaux s'y centrent (variables CSS --inset-*).
+function updateViewInsets(immediate = false) {
+  const container = $('board-container');
+  const covers = compactLayout.matches
+    ? BOARD_COVERS.map(([id, side]) => ({ rect: $(id).getBoundingClientRect(), side }))
+    : [];
+  const insets = coveredInsets(container.getBoundingClientRect(), covers, MIN_FREE_SHARE);
+
+  for (const side of Object.keys(insets)) container.style.setProperty(`--inset-${side}`, `${Math.round(insets[side])}px`);
+  if (session) {
+    const top = insets.top + (compactLayout.matches && lowScreen.matches ? ANNOUNCE_ROOM : 0);
+    session.renderer3d.setViewInsets({ ...insets, top }, immediate);
+  }
+}
+
+let insetsQueued = false;
+function queueViewInsets() {
+  if (insetsQueued) return;
+  insetsQueued = true;
+  requestAnimationFrame(() => {
+    insetsQueued = false;
+    updateViewInsets();
+  });
+}
+const insetObserver = new ResizeObserver(queueViewInsets);
+for (const id of ['board-container', ...BOARD_COVERS.map(([id]) => id)]) insetObserver.observe($(id));
+compactLayout.addEventListener('change', queueViewInsets);
+lowScreen.addEventListener('change', queueViewInsets);
+
+// === Au doigt : pas de survol ===
+
+let lastPointerType = 'mouse';
+document.addEventListener('pointerdown', (e) => {
+  lastPointerType = e.pointerType;
+  // Toucher l'écran referme l'infobulle affichée (un appui sur une case en rouvre une)
+  if (e.pointerType === 'touch') hideTooltip($('tile-tooltip'));
+  if (!e.target.closest('#hud-controls, #btn-hud-menu')) setHudMenu(false);
+}, true);
+
+// Un appui sur une carte de la main ou sur un élément d'une fiche de joueur affiche l'explication
+// que la souris montre au survol (attribut title)
+document.addEventListener('click', (e) => {
+  if (lastPointerType !== 'touch') return;
+  const el = e.target.closest('#hand-cards .card[title], .player-info-card [title]');
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  showTooltip($('tile-tooltip'), escapeHtml(el.title), rect.left + rect.width / 2, rect.top + 14, true);
+});
+
+// Fiches des joueurs réduites (téléphone) : un appui hors des éléments expliqués les déplie
+$('players-list').addEventListener('click', (e) => {
+  if (!compactLayout.matches || e.target.closest('[title]')) return;
+  $('players-panel').classList.toggle('expanded');
 });
 
 $('debug-toggle').addEventListener('click', () => $('debug-panel').classList.toggle('hidden'));
@@ -526,8 +662,16 @@ function closeModal() {
   $('modal-content').innerHTML = '';
 }
 
-function openBanner(text) {
-  $('choice-text').textContent = text;
+// `hint` : précision affichée à la suite, sauf sur téléphone où la place manque
+function openBanner(text, hint = '') {
+  const textEl = $('choice-text');
+  textEl.textContent = text;
+  if (hint) {
+    const hintEl = document.createElement('span');
+    hintEl.className = 'choice-hint';
+    hintEl.textContent = ` ${hint}`;
+    textEl.appendChild(hintEl);
+  }
   $('choice-buttons').innerHTML = '';
   $('choice-banner').classList.remove('hidden');
   return $('choice-buttons');
@@ -598,7 +742,7 @@ const ASKERS = {
   direction(request, game, finish) {
     const player = game.players[request.playerId];
     const steps = request.stepsRemaining;
-    const buttons = openBanner(`Encore ${steps} pas — choisissez une direction (flèche sur le plateau ou bouton)`);
+    const buttons = openBanner(`Encore ${steps} pas — choisissez une direction`, '(flèche sur le plateau ou bouton)');
 
     const relabel = () => {
       buttons.querySelectorAll('button').forEach((btn) => {
@@ -743,7 +887,7 @@ const ASKERS = {
   },
 
   teleport(request, game, finish) {
-    openBanner('Keyblade Glider : cliquez sur la case de destination (plateau ou minimap)');
+    openBanner('Keyblade Glider : choisissez la case de destination', '(sur le plateau ou la minimap)');
     pickTile(request.tileIds).then((tileId) => {
       if (tileId !== null) finish({ tileId });
     });
@@ -757,7 +901,7 @@ const ASKERS = {
     const targets = request.targetIds.map(id => game.players[id]);
     const chooseTile = (target) => {
       closeModal();
-      openBanner(`Pixie Dust : cliquez sur la case où envoyer ${target.name}`);
+      openBanner(`Pixie Dust : choisissez la case où envoyer ${target.name}`);
       pickTile(request.tileIds).then((tileId) => {
         if (tileId !== null) finish({ targetId: target.id, tileId });
       });
@@ -814,7 +958,7 @@ function openHandDetail(handDef, player, request, game, finish) {
   const content = openModal(`
     <h3>${handDef.name}</h3>
     <p>${handDef.description}</p>
-    <p>${hasChoice ? 'Cartes utilisées (cliquez pour en changer) :' : 'Cartes utilisées :'}</p>
+    <p>${hasChoice ? 'Cartes utilisées (choisissez-en une autre pour en changer) :' : 'Cartes utilisées :'}</p>
     <div class="card-row" id="hand-pick"></div>
     ${handDef.needsTarget ? '<p>Cible :</p><div class="choice-list" id="hand-targets"></div>' : ''}
     <div>

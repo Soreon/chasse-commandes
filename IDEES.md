@@ -26,6 +26,7 @@ Liste mise de côté après la revue du 27/11/2026. Rien de tout cela n'est comm
 - Export / import d'un plateau en fichier JSON.
 - Bouton « Tester ce plateau » qui lance une partie directement.
 - Conserver le nom des zones à la sauvegarde (elles sont renommées « Zone A », « Zone B »…).
+- Adapter l'éditeur au téléphone (le jeu l'est, l'éditeur pas encore).
 - Plus de 6 zones, grilles non carrées, boutons Annuler / Rétablir visibles (Ctrl+Z / Ctrl+Y existent déjà).
 
 ## Identité du jeu

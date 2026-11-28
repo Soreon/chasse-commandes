@@ -16,14 +16,30 @@
   --border-color: #2a3050;
 }
 
+html { overscroll-behavior: none; }
+
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   background: var(--bg-dark);
   color: var(--text-primary);
   overflow: hidden;
+  /* Sur téléphone, 100vh compte la barre d'adresse même quand elle est affichée : 100dvh suit
+     la hauteur réellement visible */
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
+  position: fixed;
+  inset: 0;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
+/* Appui long sur une image : pas de menu « enregistrer l'image » */
+#game-screen img { pointer-events: none; -webkit-user-drag: none; }
+/* L'interface du jeu ne se sélectionne pas comme du texte (appui long au doigt) */
+#main-menu, #game-screen, #victory-screen { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 
 /* === Screens === */
 .screen {
@@ -127,6 +143,7 @@ body {
   border: 1px solid var(--border-color);
   max-width: 600px;
   max-height: 80vh;
+  max-height: 80dvh;
   overflow-y: auto;
 }
 .rules-container h2 { color: var(--accent-gold); margin-bottom: 1rem; }
@@ -1016,7 +1033,8 @@ body {
 .gp-amount.negative { color: var(--accent-red); }
 .card-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 10px 0; }
 .choice-list { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin: 10px 0; }
-.choice-list.column { flex-direction: column; flex-wrap: nowrap; max-height: 300px; overflow-y: auto; }
+/* justify-content: flex-start : centrée, une liste plus haute que sa fenêtre perdrait ses premières lignes */
+.choice-list.column { flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; max-height: 300px; overflow-y: auto; }
 .overlay-content .hand-option {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   text-align: left; padding: 8px 12px; margin: 0;
@@ -1031,33 +1049,8 @@ body {
 /* === Barres de défilement === */
 * { scrollbar-width: thin; scrollbar-color: var(--border-color) transparent; }
 
-/* === Petits écrans === */
+/* === Petits écrans : éditeur (le jeu est traité en fin de fichier, section Téléphone) === */
 @media (max-width: 720px) {
-  .game-title { font-size: 2.4rem; letter-spacing: 2px; text-align: center; }
-  .setup-container { min-width: 0; width: 94vw; padding: 1.2rem; }
-  .rules-container { max-width: 94vw; }
-  #hud-top { flex-wrap: wrap; gap: 4px; font-size: 0.8rem; }
-  #turn-status { order: 3; flex-basis: 100%; justify-content: flex-start; }
-  #gp-goal-display { margin-left: auto; }
-  .hud-btn { padding: 5px 7px; font-size: 0.72rem; }
-  #players-panel { top: 6px; left: 6px; right: 6px; }
-  #players-list { flex-direction: row; gap: 4px; }
-  .player-info-card { width: auto; min-width: 0; flex: 1; padding: 5px 7px; }
-  .p-stats, .p-fortune-line, .p-unit, .p-status { display: none; }
-  .p-gp { font-size: 0.95rem; }
-  .p-name { font-size: 0.75rem; }
-  #board-minimap { width: 110px; height: 110px; bottom: 6px; right: 6px; }
-  #message-log { width: calc(100% - 130px); max-height: 90px; left: 6px; bottom: 6px; }
-  #choice-banner { top: 64px; }
-  #notif-stack { top: 120px; }
-  #hud-bottom { height: auto; min-height: 0; max-height: none; flex-direction: column; align-items: stretch; gap: 8px; padding: 8px; }
-  #player-hand { min-width: 0; }
-  .card { width: 88px; height: 80px; }
-  .hand-label { flex-direction: row; gap: 6px; align-items: baseline; }
-  #action-panel { align-items: stretch; }
-  .action-btn { flex: 1; height: 52px; padding: 0 10px; }
-  .roll-btn { min-width: 0; }
-  .overlay-content { min-width: 0; width: 100%; padding: 1rem; }
   .builder-layout { flex-direction: column; }
   .builder-sidebar { width: 100%; min-width: 0; max-height: 45%; }
 }
@@ -1154,11 +1147,6 @@ body {
 .setup-container .menu-btn, .rules-container .menu-btn, .victory-container .menu-btn { border-radius: 10px; }
 .setup-field input, .setup-field select { border-radius: 6px; }
 
-@media (max-width: 720px) {
-  .menu-container { padding: 1.6rem 1.2rem; }
-  .menu-options .menu-btn { min-width: 0; }
-  .menu-bg span { opacity: 0.3; }
-}
 @media (prefers-reduced-motion: reduce) {
   #main-menu::before, .menu-bg span, .game-title, .menu-container, .roll-btn { animation: none; }
 }
@@ -1174,3 +1162,326 @@ body {
 
 /* Case à cocher du panneau de réglages */
 #debug-panel label.check { flex-direction: row; align-items: center; gap: 6px; cursor: pointer; }
+
+/* === Commandes propres au téléphone (masquées sur grand écran) === */
+#btn-hud-menu, #btn-recenter { display: none; }
+#btn-fullscreen[hidden] { display: none; }
+
+/* ==========================================================================================
+   Téléphone
+   Deux mises en page, choisies par la taille de la fenêtre :
+     - écran étroit et haut (portrait) : barres en haut et en bas, le plateau entre les deux ;
+     - écran bas (paysage) : le plateau occupe tout l'écran, l'interface flotte par-dessus.
+   Les règles communes aux deux viennent d'abord.
+   Les variables --inset-* (posées par main.js sur #board-container) donnent la place prise sur
+   chaque bord par l'interface : les bandeaux se centrent dans la zone restée libre.
+   ========================================================================================== */
+
+@media (max-width: 720px), (max-height: 500px) {
+  /* --- Menus : le contenu défile s'il dépasse, au lieu d'être coupé --- */
+  #setup-screen, #rules-screen, #victory-screen {
+    justify-content: flex-start; overflow-x: hidden; overflow-y: auto; padding: 10px;
+  }
+  .setup-container, .rules-container, .victory-container { margin: auto; }
+  /* Menu principal : son décor déborde exprès, c'est donc le panneau qui défile */
+  #main-menu { padding: 10px; }
+  .menu-container { padding: 1.4rem 1.1rem; width: min(100%, 460px); max-height: 100%; overflow-y: auto; }
+  .menu-options .menu-btn { min-width: 0; }
+  .menu-bg span { opacity: 0.3; }
+  .game-title { text-align: center; }
+  .setup-container { min-width: 0; width: min(100%, 460px); padding: 1.1rem; }
+  .setup-field input[type="text"], .setup-field select { min-width: 0; max-width: 58%; font-size: 1rem; padding: 9px 10px; }
+  .setup-field input[type="checkbox"] { width: 22px; height: 22px; }
+  .rules-container { max-width: 100%; max-height: none; padding: 1.1rem; overflow: visible; }
+  .victory-title { font-size: 2.4rem; margin-bottom: 0.4rem; }
+  #winner-name { font-size: 1.5rem; margin-bottom: 0.6rem; }
+  #winner-reason { margin-bottom: 0.6rem; text-align: center; }
+  #final-scores { min-width: 0; width: min(100%, 360px); padding: 0.8rem 1.1rem; margin-bottom: 0.8rem; }
+
+  /* --- Barre du haut : un bouton ouvre la liste des commandes --- */
+  #hud-top { position: relative; z-index: 70; padding: 4px 6px; gap: 8px; font-size: 0.82rem; }
+  #btn-hud-menu {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 34px; padding: 0; font-size: 1.15rem; flex-shrink: 0;
+  }
+  #hud-top.menu-open #btn-hud-menu { color: var(--accent-gold); border-color: var(--accent-gold); }
+  #hud-controls {
+    display: none; position: absolute; top: calc(100% + 2px); left: 6px; z-index: 500;
+    flex-direction: column; align-items: stretch; gap: 6px; padding: 8px;
+    min-width: 210px; max-height: calc(100dvh - 56px); overflow-y: auto;
+    background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  }
+  #hud-top.menu-open #hud-controls { display: flex; }
+  #hud-controls .hud-btn { padding: 11px 12px; font-size: 0.9rem; text-align: left; border-radius: 8px; }
+  /* Réglages de caméra : affichés à la suite, sans bouton pour les déplier */
+  #debug-toggle { display: none; }
+  #debug-panel, #debug-panel.hidden {
+    display: flex; position: static; margin: 0; padding: 6px 4px 2px; min-width: 0;
+    border: 0; border-top: 1px solid var(--border-color); border-radius: 0; background: none;
+  }
+  #debug-panel label { font-size: 0.85rem; }
+  #debug-panel input[type="range"] { height: 28px; }
+  #turn-status { justify-content: flex-start; gap: 7px; }
+  #turn-who { font-size: 0.92rem; }
+  .turn-chip { padding: 2px 8px; font-size: 0.7rem; }
+  #gp-goal-display { font-size: 0.72rem; }
+
+  /* --- Joueurs : fiches réduites à l'essentiel ; un appui sur la liste les déplie --- */
+  .player-info-card {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 6px;
+    width: auto; padding: 4px 7px 5px 8px; border-left-width: 3px; border-radius: 7px; font-size: 0.72rem;
+  }
+  .p-head { grid-column: 1 / -1; margin-bottom: 0; gap: 5px; }
+  .p-dot { width: 7px; height: 7px; }
+  .p-name { font-size: 0.76rem; }
+  .p-tag { padding: 0 5px; font-size: 0.52rem; }
+  .p-out { grid-column: 1 / -1; font-size: 0.7rem; }
+  .p-money { grid-column: 1; grid-row: 2; }
+  .p-gp { font-size: 0.98rem; }
+  .p-unit { display: none; }
+  .p-stats { grid-column: 2; grid-row: 2; display: flex; gap: 0; margin: 0; padding: 0; border: 0; }
+  .p-stats .p-stat:not(:last-child), .p-stats .p-stat > span:last-child { display: none; }
+  .p-checkpoints { gap: 3px; height: auto; }
+  .p-cp { width: 8px; height: 8px; border-width: 1.5px; }
+  .p-fortune { grid-column: 1 / -1; grid-row: 3; margin-top: 2px; }
+  .p-fortune-line { font-size: 0.58rem; }
+  .p-progress { height: 4px; margin-top: 2px; }
+  .p-status { grid-column: 1 / -1; grid-row: 4; margin-top: 3px; gap: 3px; }
+  .p-chip { padding: 0 5px; font-size: 0.64rem; }
+  /* Fiches dépliées : cases et cartes de chacun reviennent */
+  #players-panel.expanded .p-stats {
+    grid-column: 1 / -1; grid-row: 5; display: grid; grid-template-columns: auto auto 1fr; gap: 10px;
+    margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  #players-panel.expanded .p-stats .p-stat:not(:last-child) { display: flex; }
+  #players-panel.expanded .p-stats .p-stat:not(:last-child) > span:last-child { display: block; font-size: 0.52rem; }
+  #players-panel.expanded .p-stat b { font-size: 0.8rem; }
+
+  /* --- Journal : deux lignes discrètes, qui laissent passer les gestes --- */
+  #message-log { max-height: 2.9rem; overflow: hidden; pointer-events: none; }
+  .log-entry { padding: 2px 6px; font-size: 0.66rem; background: rgba(20, 24, 41, 0.72); }
+
+  /* --- Minimap, avec à sa gauche le bouton qui relance le suivi du joueur --- */
+  #board-minimap { border-width: 1px; }
+  #btn-recenter {
+    display: inline-flex; align-items: center; gap: 5px;
+    position: absolute; right: calc(100% + 6px); bottom: 0;
+    padding: 8px 11px; white-space: nowrap; font: inherit; font-size: 0.78rem; font-weight: 700;
+    color: #1a1400; background: var(--accent-gold); border: 0; border-radius: 18px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5); cursor: pointer;
+  }
+  #btn-recenter.hidden { display: none; }
+
+  /* --- Bandeaux, dés, annonces : centrés dans la zone libre du plateau --- */
+  #choice-banner, #announce-banner, #notif-stack, #dice-display {
+    left: calc((100% + var(--inset-left, 0px) - var(--inset-right, 0px)) / 2);
+  }
+  #choice-banner {
+    top: calc(var(--inset-top, 0px) + 6px); padding: 6px 10px;
+    width: max-content; max-width: calc(100% - var(--inset-left, 0px) - var(--inset-right, 0px) - 12px);
+  }
+  #choice-text { font-size: 0.8rem; }
+  .choice-hint { display: none; }
+  #choice-buttons .overlay-btn { padding: 9px 12px; font-size: 0.82rem; border-radius: 8px; }
+  #notif-stack { top: calc(var(--inset-top, 0px) + 8px); width: max-content; max-width: calc(100% - var(--inset-left, 0px) - var(--inset-right, 0px) - 12px); }
+  .notif-toast { padding: 5px 12px; gap: 7px; }
+  .notif-toast .notif-icon { font-size: 1.1rem; }
+  .notif-toast .notif-text { font-size: 0.85rem; }
+  #announce-banner {
+    top: calc(var(--inset-top, 0px) + 6px); gap: 10px; padding: 8px 14px 8px 12px; border-radius: 12px;
+    width: max-content; max-width: calc(100% - var(--inset-left, 0px) - var(--inset-right, 0px) - 16px);
+  }
+  #announce-icon { font-size: 1.8rem; }
+  #announce-title { font-size: 0.95rem; }
+  #announce-text { margin-top: 1px; font-size: 0.8rem; }
+  #dice-display { top: calc(var(--inset-top, 0px) + 64px); }
+  .dice { width: 52px; height: 52px; font-size: 1.7rem; border-radius: 8px; }
+  .dice-display { gap: 10px; }
+
+  /* --- Cartes : elles se partagent la largeur, dans la main comme dans les fenêtres --- */
+  .card, .card.small {
+    flex: 1 1 0; min-width: 0; max-width: 96px; width: auto; height: 58px; border-radius: 6px;
+  }
+  .card-head { padding: 2px 5px; gap: 3px; }
+  .card-icon { width: 10px; height: 10px; }
+  .card-type { font-size: 0.5rem; letter-spacing: 0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card-name { padding: 0 3px; font-size: 0.68rem; line-height: 1.05; overflow: hidden; overflow-wrap: anywhere; }
+  .card-foot { padding: 0 5px 2px; font-size: 0.5rem; justify-content: flex-end; }
+  .card-foot-label { display: none; }
+  .card-value { font-size: 0.78rem; }
+  #hand-cards { gap: 5px; overflow: visible; flex: 1; min-width: 0; }
+  #player-hand { min-width: 0; }
+  .hand-label, #action-status { display: none; }
+  .card-row { flex-wrap: nowrap; gap: 5px; margin: 8px 0; }
+  .card-row .card { height: 64px; }
+  .card-row .card-value { font-size: 0.7rem; }
+  .card-row .card:hover { transform: none; }
+  .card.selected { transform: translateY(-3px); }
+
+  /* --- Boutons d'action --- */
+  .action-btn { height: 50px; padding: 0 12px; border-radius: 10px; font-size: 0.88rem; }
+  .action-ico { font-size: 1.35rem; }
+  .roll-btn { min-width: 0; font-size: 1rem; }
+  .roll-btn:hover:not(:disabled) { transform: none; }
+
+  /* --- Fenêtres de décision --- */
+  .overlay-content { min-width: 0; padding: 12px 14px; border-radius: 12px; }
+  .overlay-content h3 { margin-bottom: 0.5rem; font-size: 1.02rem; }
+  .overlay-content p { margin-bottom: 0.35rem; font-size: 0.82rem; line-height: 1.3; }
+  .overlay-content .overlay-btn { padding: 11px 16px; margin: 4px; font-size: 0.88rem; border-radius: 8px; }
+  .overlay-content .hand-option { padding: 8px 10px; }
+  .choice-list.column { max-height: 46dvh; }
+  .hand-option small { font-size: 0.72rem; }
+
+  /* --- Infobulle : elle peut aller à la ligne --- */
+  .tile-tooltip { max-width: min(300px, calc(100vw - 12px)); white-space: normal; padding: 6px 9px; font-size: 0.8rem; border-radius: 8px; }
+  .tile-tooltip .tt-zone { font-size: 0.74rem; }
+}
+
+/* --- Portrait : barres en haut et en bas, le plateau entre les deux --- */
+@media (max-width: 720px) and (min-height: 501px) {
+  #players-panel { top: 6px; left: 6px; right: 6px; }
+  #players-list { flex-direction: row; align-items: flex-start; gap: 4px; }
+  .player-info-card { flex: 1 1 0; min-width: 0; }
+  #board-minimap { width: 100px; height: 100px; right: 6px; bottom: 6px; }
+  #message-log { left: 6px; bottom: 6px; width: calc(100% - 124px); }
+  #hud-bottom {
+    height: auto; min-height: 0; max-height: none; flex-direction: column; align-items: stretch; gap: 7px;
+    padding: 7px 8px calc(8px + env(safe-area-inset-bottom, 0px)); overflow: visible;
+  }
+  #action-panel { align-items: stretch; }
+  .action-row { gap: 8px; }
+  .action-btn { flex: 1 1 0; }
+  .hand-btn { flex: 0 1 40%; }
+  #choice-banner:not(.hidden) ~ #notif-stack { top: calc(var(--inset-top, 0px) + 92px); }
+  #announce-banner:not(.hidden) ~ #notif-stack { top: calc(var(--inset-top, 0px) + 74px); }
+  /* Fenêtre de décision : une feuille en bas, sur toute la largeur */
+  #modal-overlay { padding: 6px; }
+  #modal-overlay .overlay-content { width: 100%; max-width: 560px; }
+}
+
+/* --- Paysage : le plateau occupe tout l'écran, l'interface flotte par-dessus --- */
+@media (max-height: 500px) {
+  /* Menus : tout doit tenir dans la hauteur */
+  .menu-container { width: min(100%, 620px); padding: 0.8rem 1rem; }
+  .menu-kicker, .menu-tagline { display: none; }
+  .game-title { font-size: 2rem; margin-bottom: 0.6rem; }
+  .menu-options { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .menu-options .menu-btn { padding: 10px 14px; font-size: 0.95rem; }
+  .menu-link { grid-column: 1 / -1; margin-top: 0; }
+  .setup-container { width: min(100%, 640px); padding: 0.8rem 1rem; display: grid; grid-template-columns: 1fr 1fr; column-gap: 1.4rem; }
+  .setup-container h2 { grid-column: 1 / -1; margin-bottom: 0.6rem; font-size: 1.15rem; }
+  .setup-field { margin-bottom: 0.5rem; }
+  .setup-error { grid-column: 1 / -1; }
+  .setup-field:has(#spectator-mode) { grid-column: 1 / -1; justify-content: flex-start; }
+  .setup-container .menu-btn { margin-top: 0.3rem; padding: 10px; font-size: 1rem; }
+  /* Retour à gauche, Jouer à droite */
+  #btn-back-menu { order: 1; }
+  #btn-play { order: 2; }
+  /* Fin de partie : le vainqueur à gauche, le classement à droite, les boutons dessous */
+  .victory-container { display: grid; grid-template-columns: auto minmax(240px, 320px); column-gap: 28px; row-gap: 2px; align-items: center; justify-items: center; }
+  .victory-title { grid-column: 1; grid-row: 1; margin-bottom: 0; font-size: 1.8rem; animation: none; }
+  #winner-name { grid-column: 1; grid-row: 2; margin-bottom: 0; font-size: 1.2rem; }
+  #winner-reason { grid-column: 1; grid-row: 3; margin-bottom: 0; max-width: 270px; }
+  #final-scores { grid-column: 2; grid-row: 1 / span 3; width: 100%; margin-bottom: 0; }
+  #btn-victory-journal { grid-column: 1; grid-row: 4; }
+  #btn-back-to-menu { grid-column: 2; grid-row: 4; }
+  .victory-container .menu-btn { width: 100%; margin-top: 12px; padding: 9px 16px; font-size: 0.9rem; }
+
+  #game-screen.active { display: block; }
+  #board-container { position: absolute; inset: 0; }
+
+  /* Haut : le bouton des commandes et le tour en cours, dans de petites pastilles */
+  #hud-top {
+    position: absolute; top: 0; left: 0; max-width: calc(100% - 170px);
+    padding: 6px 8px 0 max(8px, env(safe-area-inset-left, 0px)); gap: 6px;
+    background: none; border: 0; pointer-events: none;
+  }
+  #hud-top > * { pointer-events: auto; }
+  #btn-hud-menu { background: rgba(14, 18, 36, 0.86); }
+  #turn-status {
+    flex: 0 1 auto; padding: 5px 11px 5px 6px; border-radius: 17px;
+    background: rgba(14, 18, 36, 0.86); border: 1px solid var(--border-color);
+  }
+  #gp-goal-display { display: none; }
+  /* Commandes sur deux colonnes : la liste tient dans la hauteur */
+  #hud-controls { left: max(8px, env(safe-area-inset-left, 0px)); max-height: calc(100dvh - 50px); min-width: 340px; }
+  #hud-top.menu-open #hud-controls { display: grid; grid-template-columns: 1fr 1fr; }
+  #hud-controls .hud-btn { padding: 9px 12px; }
+  #debug-menu { grid-column: 1 / -1; }
+  #debug-panel, #debug-panel.hidden { display: grid; grid-template-columns: 1fr 1fr; column-gap: 14px; }
+  #debug-panel label.check { grid-column: 1 / -1; }
+
+  /* Droite : les joueurs en colonne, la minimap au-dessus des boutons d'action */
+  #players-panel { top: 6px; right: max(8px, env(safe-area-inset-right, 0px)); left: auto; }
+  #players-list { flex-direction: column; gap: 4px; }
+  /* Fiche sur deux lignes : nom et argent, puis fortune et checkpoints */
+  .player-info-card { width: 160px; row-gap: 1px; background: rgba(16, 20, 38, 0.86); }
+  .p-head { grid-column: 1; grid-row: 1; }
+  .p-money { grid-column: 2; grid-row: 1; }
+  .p-gp { font-size: 0.9rem; }
+  .p-fortune { grid-column: 1; grid-row: 2; margin-top: 0; }
+  .p-stats { grid-column: 2; grid-row: 2; align-self: start; }
+  .p-status { grid-row: 3; }
+  #board-minimap { width: 84px; height: 84px; right: max(8px, env(safe-area-inset-right, 0px)); bottom: 64px; }
+  /* Fiches dépliées : elles descendent jusqu'à la minimap, qui leur laisse la place */
+  #board-container:has(#players-panel.expanded) #board-minimap { display: none; }
+  #message-log { left: max(8px, env(safe-area-inset-left, 0px)); bottom: 70px; width: 44%; max-width: 330px; }
+
+  /* Bas : la main à gauche, les actions à droite */
+  #hud-bottom {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 15;
+    flex-direction: row; align-items: flex-end; gap: 10px;
+    height: auto; min-height: 0; max-height: none; overflow: visible;
+    padding: 14px max(8px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+    background: linear-gradient(to top, rgba(8, 11, 22, 0.9) 45%, rgba(8, 11, 22, 0)); border: 0; pointer-events: none;
+  }
+  #hud-bottom > * { pointer-events: auto; }
+  #player-hand { flex: 1 1 0; max-width: 420px; }
+  .card { height: 50px; }
+  #action-panel { flex-shrink: 0; margin-left: auto; }
+  .action-btn { height: 50px; }
+  .roll-btn { min-width: 148px; }
+
+  /* Fenêtre de décision : un volet à droite, le plateau reste visible à gauche */
+  #modal-overlay {
+    justify-content: flex-end; align-items: stretch; padding: 6px;
+    background: linear-gradient(to left, rgba(10, 14, 26, 0.62), rgba(10, 14, 26, 0) 62%);
+  }
+  #modal-overlay .overlay-content {
+    display: flex; flex-direction: column; justify-content: safe center;
+    width: min(360px, 54%); max-width: none; padding: 10px 12px;
+  }
+  .card-row .card { height: 58px; }
+  /* Liste des mains : sur deux colonnes dans un volet plus large, pour tenir sans défiler */
+  #modal-overlay .overlay-content:has(#hand-list) { width: min(580px, 80%); padding-top: 7px; padding-bottom: 6px; }
+  #hand-list { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; max-height: none; overflow: visible; margin: 0 0 3px; }
+  .overlay-content .hand-option { padding: 5px 9px; }
+  .hand-option strong { font-size: 0.84rem; }
+  /* Deux lignes de description au plus : le détail de la main la donne en entier */
+  .hand-option small {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+    font-size: 0.68rem; line-height: 1.2;
+  }
+  .overlay-content h3 { margin-bottom: 0.35rem; }
+  .overlay-content p { margin-bottom: 0.25rem; }
+  .overlay-content .overlay-btn { padding: 9px 16px; margin: 3px 4px; }
+  .card-row, .choice-list { margin: 6px 0; }
+  /* Choix de direction : à la place des boutons d'action (inactifs à ce moment-là), sous le
+     pouce, pour ne pas masquer le pion et les flèches du plateau */
+  #choice-banner {
+    top: auto; bottom: calc(6px + env(safe-area-inset-bottom, 0px)); left: auto; transform: none;
+    right: max(8px, env(safe-area-inset-right, 0px)); max-width: min(64%, 450px);
+  }
+  #choice-buttons { justify-content: flex-end; }
+  /* Notifications : en colonne à gauche, l'annonce garde le centre */
+  #notif-stack { left: max(8px, env(safe-area-inset-left, 0px)); transform: none; align-items: flex-start; top: calc(var(--inset-top, 0px) + 6px); max-width: 46%; }
+  #announce-banner { top: calc(var(--inset-top, 0px) + 4px); }
+  #dice-display { top: calc(var(--inset-top, 0px) + 6px); }
+}
+
+/* Paysage très bas (barre d'adresse affichée) : la minimap laisse la place aux joueurs */
+@media (max-height: 345px) {
+  #board-minimap { width: 72px; height: 72px; }
+}
