@@ -1,6 +1,6 @@
 // Banc d'essai (essais.html) : montre les dessins proposés pour un effet, à côté du dessin actuel,
 // sans avoir à lancer une partie ni à attendre que l'effet soit joué. L'effet à l'essai est
-// décrit par TRIAL, plus bas ; en ce moment : la Confusion.
+// décrit par TRIAL, plus bas ; en ce moment : le Double Péage.
 //
 // Chaque vue est la vraie vue 3D du jeu (Renderer3D) sur un vrai plateau. Seule la partie est
 // factice : un joueur attend sur une case à l'écart, et l'effet s'y joue.
@@ -14,40 +14,43 @@ import { TileType } from './engine/board.js';
 import { PLAYER_COLORS } from './engine/player.js';
 import { TIMING } from './controller.js';
 import { Renderer3D } from './renderer3dThree.js';
-import { CONFUSE_STYLES } from './confuseFx.js';
+import { TOLL_STYLES } from './tollFx.js';
 
 const OTHER = 0;   // le joueur dont c'est le tour, resté sur la case Départ
 const SUBJECT = 1; // celui sur qui l'effet se joue, sur une case à l'écart
 
 // L'effet à l'essai
 const TRIAL = {
-  title: 'Confusion',
-  type: 'confuse', // type d'effet, pour Renderer3D.setFxStyle
+  title: 'Double Péage',
+  type: 'doubleToll', // type d'effet, pour Renderer3D.setFxStyle
   // Les dessins montrés : l'actuel ('classic'), puis les propositions, numérotées
-  names: { classic: 'Symboles qui tournent', ...CONFUSE_STYLES },
-  short: { classic: 'Actuel', drop: 'Ciel', ring: 'Ronde', arrow: 'Flèche', spin: 'Toupie' }, // onglets
+  names: { classic: '« ×2 » qui s’élèvent', ...TOLL_STYLES },
+  short: { classic: 'Actuel', drop: 'Ciel', ring: 'Ronde', stamp: '×2', stack: 'Piles' }, // onglets
   notes: {
-    classic: 'Le dessin actuel : des symboles « ? » et étoile tournent au-dessus de la tête des adversaires.',
-    drop: 'Un gros « ? » tombe du ciel sur la tête de chaque adversaire, y rebondit en se balançant, puis éclate.',
-    ring: 'Trois « ? » redessinés tournent autour de leur tête et passent derrière elle.',
-    arrow: 'Au-dessus de leur tête, une flèche saute d’une direction à l’autre, au hasard, puis se change en « ? ».',
-    spin: 'Les pions tournent sur eux-mêmes comme des toupies, puis titubent sous un « ? ».',
+    classic: 'Le dessin actuel : un « ×2 » s’élève de chaque case du joueur, sous un symbole de sac d’or.',
+    drop: 'Sur chaque case du joueur, deux pièces en volume tombent du ciel l’une sur l’autre.',
+    ring: 'Des pièces tournent autour du pion, puis s’envolent chacune vers une case, où jaillit un « ×2 ».',
+    stamp: 'Un gros « ×2 » tombe du ciel sur chaque case du joueur, y rebondit et s’y plante.',
+    stack: 'Une pile de deux pièces sort de chaque case du joueur, puis double d’un coup.',
   },
   // Variante de l'effet, choisie dans la barre : { label, values, initial }, ou null
   option: null,
   // Joueurs de la partie factice : celui dont c'est le tour, puis ceux sur qui l'effet se joue
-  players: ['Lanceur', 'Adversaire 1', 'Adversaire 2'],
+  players: ['Autre', 'Joueur'],
   // Mise en place de la partie factice, avant l'affichage. spot : la case à l'écart, où se trouve
-  // déjà le joueur SUBJECT. Comme en partie, les adversaires portent déjà l'étiquette de leur
-  // confusion quand l'effet se joue.
+  // déjà le joueur SUBJECT. Il possède les cases alentour et, comme en partie, porte déjà
+  // l'étiquette « ×2 » quand l'effet se joue.
   prepare(game, spot, renderer) {
-    game.players[2].position = nearestTile(renderer, spot);
-    game.players[1].confusedTurns = 3;
-    game.players[2].confusedTurns = 3;
+    // Pas la sienne : l'effet s'y jouerait sous son pion
+    for (const tile of nearestTiles(game, renderer, spot, 6).filter(tile => tile.id !== spot)) {
+      tile.owner = SUBJECT;
+      tile.level = 1;
+    }
+    game.players[SUBJECT].doubleTollTurns = 5;
   },
   // L'effet tel que le moteur le décrit, et le joueur qui joue la main
-  fx: () => ({ type: 'confuse', targetIds: [1, 2] }),
-  playerId: OTHER,
+  fx: (option, game) => ({ type: 'doubleToll', tileIds: game.tiles.filter(tile => tile.owner === SUBJECT).map(tile => tile.id) }),
+  playerId: SUBJECT,
 };
 
 const STYLES = Object.keys(TRIAL.names);
@@ -80,7 +83,7 @@ const views = STYLES.map(() => {
   el.innerHTML = '<header><h2><span class="num"></span><span class="name"></span></h2>'
     + '<button type="button">▶ Rejouer</button><p></p></header><div class="stage"></div>';
   bench.append(el);
-  const view = { style: null, el, stage: el.querySelector('.stage'), renderer: null, playing: false };
+  const view = { style: null, el, stage: el.querySelector('.stage'), renderer: null, game: null, playing: false };
   el.querySelector('button').addEventListener('click', () => play(view));
   new ResizeObserver(() => frame(view)).observe(view.stage);
   return view;
@@ -125,19 +128,17 @@ function quietTile(game, renderer) {
   return best;
 }
 
-// Case la plus proche d'une autre : sa voisine
-function nearestTile(renderer, tileId) {
+// Cases ordinaires les plus proches d'une case (elle comprise), de la plus proche à la plus lointaine
+function nearestTiles(game, renderer, tileId, count) {
   const from = renderer.tileCenters[tileId];
-  let best = tileId;
-  let bestGap = Infinity;
-  for (const [id, center] of Object.entries(renderer.tileCenters)) {
-    const gap = (center.x - from.x) ** 2 + (center.z - from.z) ** 2;
-    if (Number(id) !== tileId && gap < bestGap) {
-      best = Number(id);
-      bestGap = gap;
-    }
-  }
-  return best;
+  const gap = (tile) => {
+    const center = renderer.tileCenters[tile.id];
+    return (center.x - from.x) ** 2 + (center.z - from.z) ** 2;
+  };
+  return Object.values(game.tiles)
+    .filter(tile => tile.type === TileType.NORMAL && renderer.tileCenters[tile.id])
+    .sort((a, b) => gap(a) - gap(b))
+    .slice(0, count);
 }
 
 async function buildView(view) {
@@ -152,6 +153,7 @@ async function buildView(view) {
   const spot = quietTile(game, renderer);
   game.players[SUBJECT].position = spot;
   TRIAL.prepare(game, spot, renderer);
+  view.game = game;
   renderer.sync(game);
   renderer.focusTile(spot); // la caméra s'y pose et ne suit plus personne
 }
@@ -195,7 +197,7 @@ function play(view) {
   if (!renderer || building || view.playing) return Promise.resolve();
   view.playing = true;
   view.el.classList.add('playing');
-  return renderer.playEffect(TRIAL.fx(state.option), TRIAL.playerId, TIMING.announce / state.speed).then(() => {
+  return renderer.playEffect(TRIAL.fx(state.option, view.game), TRIAL.playerId, TIMING.announce / state.speed).then(() => {
     if (view.renderer !== renderer) return; // vue reconstruite entre-temps
     view.playing = false;
     view.el.classList.remove('playing');

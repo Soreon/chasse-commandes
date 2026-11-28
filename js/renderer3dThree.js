@@ -20,6 +20,7 @@ import { buildDice } from './diceFx.js';
 import { buildShield } from './shieldFx.js';
 import { buildNavigator } from './navigatorFx.js';
 import { buildConfuse } from './confuseFx.js';
+import { buildToll } from './tollFx.js';
 
 const TILE_SIZE = 1;
 const TILE_HEIGHT = 1;
@@ -1712,20 +1713,13 @@ export class Renderer3D {
     };
   }
 
-  // Confusion : des symboles tournent au-dessus de la tête des joueurs visés (ou l'un des dessins
-  // à l'essai, joué sur chacun d'eux)
+  // Confusion : des points d'interrogation tournent autour de la tête de chaque joueur visé, dont
+  // le pion vacille
   _fxConfuse(fx) {
-    const style = this.fxStyles.confuse;
-    if (!style) return this._fxOrbit(fx.targetIds || [], ['❓', '💫', '❓']);
-
     const targets = (fx.targetIds || []).map(id => this.tokens[id]).filter(Boolean).map((token, index) => {
       const size = token.mesh.scale.x;
-      const effect = buildConfuse(style, {
-        mesh: token.mesh, size, top: this._pawnTop(token), ground: token.baseY, camera: this.camera, index,
-      });
+      const effect = buildConfuse({ mesh: token.mesh, size, top: this._pawnTop(token), camera: this.camera, index });
       this.fxGroup.add(effect.group);
-      // Un pion que l'effet fait tourner sur lui-même ne doit pas être ramené face à la caméra
-      if (effect.turnsPawn) token.animating = true;
       // L'étiquette « ? » du pion gênerait l'effet, qui se joue au même endroit : elle revient après
       token.badgeHidden = true;
       this._placeBadge(token);
@@ -1740,36 +1734,9 @@ export class Renderer3D {
           effect.dispose();
           token.mesh.scale.setScalar(size);
           token.mesh.rotation.z = 0;
-          if (effect.turnsPawn) token.animating = false;
           token.badgeHidden = false;
           this._placeBadge(token);
         }
-      },
-    };
-  }
-
-  // Des symboles tournent au-dessus de la tête des joueurs visés, dont le pion vacille
-  _fxOrbit(targetIds, symbols) {
-    const targets = targetIds.map(id => ({ token: this.tokens[id], head: this._headOf(id) })).filter(t => t.token && t.head);
-    const groups = targets.map(target => ({
-      ...target,
-      items: symbols.map(symbol => this._fxSymbol(symbol, 0.32)),
-    }));
-
-    return {
-      update: (k) => {
-        for (const group of groups) {
-          const { head } = group;
-          group.items.forEach((item, i) => {
-            const angle = k * Math.PI * 5 + (i / group.items.length) * Math.PI * 2;
-            item.position.set(head.x + Math.cos(angle) * 0.34, head.y + 0.2, head.z + Math.sin(angle) * 0.34);
-            this._fxScale(item, envelope(k));
-          });
-          group.token.mesh.rotation.z = Math.sin(k * 42) * 0.32 * (1 - k);
-        }
-      },
-      cleanup: () => {
-        for (const group of groups) group.token.mesh.rotation.z = 0;
       },
     };
   }
@@ -1839,10 +1806,32 @@ export class Renderer3D {
     };
   }
 
-  // Double Péage : un « ×2 » s'élève de chaque case du joueur
+  // Double Péage : un « ×2 » s'élève de chaque case du joueur, sous un symbole de sac d'or (ou
+  // l'un des dessins à l'essai)
   _fxDoubleToll(fx, playerId) {
     const head = this._headOf(playerId);
     const centers = (fx.tileIds || []).slice(0, 14).map(id => this.tileCenters[id]).filter(Boolean);
+    const token = this.tokens[playerId];
+    if (this.fxStyles.doubleToll && token) {
+      const { mesh } = token;
+      const size = mesh.scale.x;
+      const toll = buildToll(this.fxStyles.doubleToll, {
+        mesh, size, top: this._pawnTop(token), ground: token.baseY, tiles: centers, camera: this.camera, gradientMap: this._toonGradient,
+      });
+      this.fxGroup.add(toll.group);
+      // L'étiquette de niveau des cases gênerait l'effet, qui se joue au même endroit : elle revient après
+      const levels = (fx.tileIds || []).map(id => (this._ownObjects[id] || [])[1]).filter(Boolean);
+      for (const level of levels) level.visible = false;
+      return {
+        update: k => toll.update(k),
+        cleanup: () => {
+          toll.dispose();
+          mesh.scale.setScalar(size);
+          for (const level of levels) level.visible = true;
+        },
+      };
+    }
+
     const labels = centers.map(() => this._fxSymbol('×2', 0.36, { fg: '#ffd700' }));
     const icon = this._fxSymbol('💰', 0.5);
 
