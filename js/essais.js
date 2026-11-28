@@ -1,9 +1,9 @@
 // Banc d'essai (essais.html) : montre les dessins proposés pour un effet, à côté du dessin actuel,
 // sans avoir à lancer une partie ni à attendre que l'effet soit joué. L'effet à l'essai est
-// décrit par TRIAL, plus bas ; en ce moment : le Navigateur.
+// décrit par TRIAL, plus bas ; en ce moment : la Confusion.
 //
 // Chaque vue est la vraie vue 3D du jeu (Renderer3D) sur un vrai plateau. Seule la partie est
-// factice : un joueur attend seul sur une case, et l'effet s'y joue.
+// factice : un joueur attend sur une case à l'écart, et l'effet s'y joue.
 //   - Grand écran : une vue par dessin, côte à côte.
 //   - Petit écran (téléphone) : une seule vue, et un onglet par dessin. Plusieurs vues 3D seraient
 //     trop lourdes, et un doigt posé sur une vue déplace sa caméra au lieu de faire défiler la page.
@@ -14,39 +14,47 @@ import { TileType } from './engine/board.js';
 import { PLAYER_COLORS } from './engine/player.js';
 import { TIMING } from './controller.js';
 import { Renderer3D } from './renderer3dThree.js';
-import { NAVIGATOR_STYLES } from './navigatorFx.js';
+import { CONFUSE_STYLES } from './confuseFx.js';
 
 const OTHER = 0;   // le joueur dont c'est le tour, resté sur la case Départ
-const SUBJECT = 1; // celui sur qui l'effet se joue, seul sur sa case
+const SUBJECT = 1; // celui sur qui l'effet se joue, sur une case à l'écart
 
 // L'effet à l'essai
 const TRIAL = {
-  title: 'Navigateur',
-  type: 'navigator', // type d'effet, pour Renderer3D.setFxStyle
+  title: 'Confusion',
+  type: 'confuse', // type d'effet, pour Renderer3D.setFxStyle
   // Les dessins montrés : l'actuel ('classic'), puis les propositions, numérotées
-  names: { classic: 'Flèches et symbole', ...NAVIGATOR_STYLES },
-  short: { classic: 'Actuel', drop: 'Ciel', ring: 'Ronde', rose: 'Rose', cubes: 'Cubes' }, // onglets
+  names: { classic: 'Symboles qui tournent', ...CONFUSE_STYLES },
+  short: { classic: 'Actuel', drop: 'Ciel', ring: 'Ronde', arrow: 'Flèche', spin: 'Toupie' }, // onglets
   notes: {
-    classic: 'Le dessin actuel : quatre flèches plates partent du joueur, sous un symbole de boussole.',
-    drop: 'Une boussole tombe du ciel sur la tête du pion ; son aiguille s’affole, puis quatre flèches filent sur le sol.',
-    ring: 'Quatre flèches tournent autour du pion, passent derrière lui, puis s’élancent chacune dans une direction.',
-    rose: 'Une rose des vents grandit en tournant sous le pion, s’aligne, et lance quatre flèches vers les cases voisines.',
-    cubes: 'Quatre flèches en petits cubes sortent de sous le pion et bondissent jusqu’aux cases voisines.',
+    classic: 'Le dessin actuel : des symboles « ? » et étoile tournent au-dessus de la tête des adversaires.',
+    drop: 'Un gros « ? » tombe du ciel sur la tête de chaque adversaire, y rebondit en se balançant, puis éclate.',
+    ring: 'Trois « ? » redessinés tournent autour de leur tête et passent derrière elle.',
+    arrow: 'Au-dessus de leur tête, une flèche saute d’une direction à l’autre, au hasard, puis se change en « ? ».',
+    spin: 'Les pions tournent sur eux-mêmes comme des toupies, puis titubent sous un « ? ».',
   },
   // Variante de l'effet, choisie dans la barre : { label, values, initial }, ou null
   option: null,
-  // Mise en place de la partie factice, avant l'affichage
-  prepare() {},
+  // Joueurs de la partie factice : celui dont c'est le tour, puis ceux sur qui l'effet se joue
+  players: ['Lanceur', 'Adversaire 1', 'Adversaire 2'],
+  // Mise en place de la partie factice, avant l'affichage. spot : la case à l'écart, où se trouve
+  // déjà le joueur SUBJECT. Comme en partie, les adversaires portent déjà l'étiquette de leur
+  // confusion quand l'effet se joue.
+  prepare(game, spot, renderer) {
+    game.players[2].position = nearestTile(renderer, spot);
+    game.players[1].confusedTurns = 3;
+    game.players[2].confusedTurns = 3;
+  },
   // L'effet tel que le moteur le décrit, et le joueur qui joue la main
-  fx: () => ({ type: 'navigator' }),
-  playerId: SUBJECT,
+  fx: () => ({ type: 'confuse', targetIds: [1, 2] }),
+  playerId: OTHER,
 };
 
 const STYLES = Object.keys(TRIAL.names);
 // « Actuel » pour le dessin en place, un numéro pour chaque proposition
 const numberOf = style => (style === 'classic' ? 'Actuel' : String(STYLES.indexOf(style)));
 
-const PLAYERS = ['Autre', 'Joueur'].map((name, i) => ({ name, isHuman: false, color: PLAYER_COLORS[i] }));
+const PLAYERS = TRIAL.players.map((name, i) => ({ name, isHuman: false, color: PLAYER_COLORS[i] }));
 const SKY_SHARE = 0.4; // part du haut de la vue laissée au ciel : le pion est cadré dessous
 const SMALL_SCREEN = window.matchMedia('(max-width: 900px), (max-height: 500px)');
 
@@ -117,6 +125,21 @@ function quietTile(game, renderer) {
   return best;
 }
 
+// Case la plus proche d'une autre : sa voisine
+function nearestTile(renderer, tileId) {
+  const from = renderer.tileCenters[tileId];
+  let best = tileId;
+  let bestGap = Infinity;
+  for (const [id, center] of Object.entries(renderer.tileCenters)) {
+    const gap = (center.x - from.x) ** 2 + (center.z - from.z) ** 2;
+    if (Number(id) !== tileId && gap < bestGap) {
+      best = Number(id);
+      bestGap = gap;
+    }
+  }
+  return best;
+}
+
 async function buildView(view) {
   const game = new Game({ boardEntry: boards[state.ambiance], boardName: state.ambiance, players: PLAYERS, seed: 1 });
   const renderer = new Renderer3D();
@@ -126,11 +149,11 @@ async function buildView(view) {
   frame(view);
   await renderer.generateBoard(game.boardData);
 
-  const subject = game.players[SUBJECT];
-  subject.position = quietTile(game, renderer);
-  TRIAL.prepare(game, subject, game.players[OTHER]);
+  const spot = quietTile(game, renderer);
+  game.players[SUBJECT].position = spot;
+  TRIAL.prepare(game, spot, renderer);
   renderer.sync(game);
-  renderer.focusTile(subject.position); // la caméra s'y pose et ne suit plus personne
+  renderer.focusTile(spot); // la caméra s'y pose et ne suit plus personne
 }
 
 // (Re)construit les vues sur le plateau de l'ambiance choisie, puis relance la lecture

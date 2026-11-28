@@ -19,6 +19,7 @@ import { buildDazed } from './dazed.js';
 import { buildDice } from './diceFx.js';
 import { buildShield } from './shieldFx.js';
 import { buildNavigator } from './navigatorFx.js';
+import { buildConfuse } from './confuseFx.js';
 
 const TILE_SIZE = 1;
 const TILE_HEIGHT = 1;
@@ -1259,9 +1260,10 @@ export class Renderer3D {
     }
   }
 
+  // token.badgeHidden : un effet qui se joue au-dessus du pion masque son étiquette, le temps de se jouer
   _placeBadge(token) {
     if (!token.badge) return;
-    token.badge.visible = token.mesh.visible;
+    token.badge.visible = token.mesh.visible && !token.badgeHidden;
     token.badge.position.set(token.mesh.position.x, token.mesh.position.y + PAWN_HEIGHT * CURRENT_PAWN_SCALE + 0.2, token.mesh.position.z);
   }
 
@@ -1594,7 +1596,7 @@ export class Renderer3D {
     const builders = {
       magnet: () => this._fxMagnet(fx, playerId),
       stun: () => this._fxStun(fx.targetId),
-      confuse: () => this._fxOrbit(fx.targetIds || [], ['❓', '💫', '❓']),
+      confuse: () => this._fxConfuse(fx),
       dice: () => this._fxDice(fx, playerId),
       shield: () => this._fxShield(playerId),
       navigator: () => this._fxNavigator(playerId),
@@ -1710,7 +1712,43 @@ export class Renderer3D {
     };
   }
 
-  // Confusion : des symboles tournent au-dessus de la tête des joueurs visés, dont le pion vacille
+  // Confusion : des symboles tournent au-dessus de la tête des joueurs visés (ou l'un des dessins
+  // à l'essai, joué sur chacun d'eux)
+  _fxConfuse(fx) {
+    const style = this.fxStyles.confuse;
+    if (!style) return this._fxOrbit(fx.targetIds || [], ['❓', '💫', '❓']);
+
+    const targets = (fx.targetIds || []).map(id => this.tokens[id]).filter(Boolean).map((token, index) => {
+      const size = token.mesh.scale.x;
+      const effect = buildConfuse(style, {
+        mesh: token.mesh, size, top: this._pawnTop(token), ground: token.baseY, camera: this.camera, index,
+      });
+      this.fxGroup.add(effect.group);
+      // Un pion que l'effet fait tourner sur lui-même ne doit pas être ramené face à la caméra
+      if (effect.turnsPawn) token.animating = true;
+      // L'étiquette « ? » du pion gênerait l'effet, qui se joue au même endroit : elle revient après
+      token.badgeHidden = true;
+      this._placeBadge(token);
+      return { token, size, effect };
+    });
+    return {
+      update: (k) => {
+        for (const { effect } of targets) effect.update(k);
+      },
+      cleanup: () => {
+        for (const { token, size, effect } of targets) {
+          effect.dispose();
+          token.mesh.scale.setScalar(size);
+          token.mesh.rotation.z = 0;
+          if (effect.turnsPawn) token.animating = false;
+          token.badgeHidden = false;
+          this._placeBadge(token);
+        }
+      },
+    };
+  }
+
+  // Des symboles tournent au-dessus de la tête des joueurs visés, dont le pion vacille
   _fxOrbit(targetIds, symbols) {
     const targets = targetIds.map(id => ({ token: this.tokens[id], head: this._headOf(id) })).filter(t => t.token && t.head);
     const groups = targets.map(target => ({
@@ -1783,49 +1821,20 @@ export class Renderer3D {
     };
   }
 
-  // Navigateur : quatre flèches partent du joueur, une par direction, sous un symbole de boussole
-  // (ou l'un des dessins à l'essai)
+  // Navigateur : une boussole tombe sur la tête du joueur, son aiguille s'affole, puis quatre
+  // flèches filent sur le sol vers les cases voisines
   _fxNavigator(playerId) {
     const token = this.tokens[playerId];
-    if (this.fxStyles.navigator && token) {
-      const { mesh } = token;
-      const size = mesh.scale.x;
-      const navigator = buildNavigator(this.fxStyles.navigator, {
-        mesh, size, top: this._pawnTop(token), ground: token.baseY, camera: this.camera, gradientMap: this._toonGradient,
-      });
-      this.fxGroup.add(navigator.group);
-      return {
-        update: k => navigator.update(k),
-        cleanup: () => {
-          navigator.dispose();
-          mesh.scale.setScalar(size);
-        },
-      };
-    }
-
-    const head = this._headOf(playerId);
-    const directions = [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }];
-    const arrows = directions.map((dir) => {
-      const arrow = new THREE.Mesh(this._arrowGeom, new THREE.MeshBasicMaterial({
-        color: 0xffd700, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.95,
-      }));
-      arrow.userData.ownMaterial = true;
-      arrow.rotation.y = Math.atan2(-dir.z, dir.x);
-      arrow.renderOrder = 39;
-      this.fxGroup.add(arrow);
-      return { arrow, dir };
-    });
-    const icon = this._fxSymbol('🧭', 0.5);
-
+    if (!token) return { update() {} };
+    const { mesh } = token;
+    const size = mesh.scale.x;
+    const navigator = buildNavigator({ mesh, size, top: this._pawnTop(token), ground: token.baseY });
+    this.fxGroup.add(navigator.group);
     return {
-      update: (k) => {
-        for (const { arrow, dir } of arrows) {
-          const reach = 0.5 + easeInOut(k) * 1.4;
-          arrow.position.set(head.x + dir.x * reach, head.y - 0.3, head.z + dir.z * reach);
-          arrow.scale.setScalar(Math.max(0.0001, 1.2 * envelope(k)));
-        }
-        icon.position.set(head.x, head.y + 0.35, head.z);
-        this._fxScale(icon, envelope(k));
+      update: k => navigator.update(k),
+      cleanup: () => {
+        navigator.dispose();
+        mesh.scale.setScalar(size);
       },
     };
   }
