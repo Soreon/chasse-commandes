@@ -89,9 +89,6 @@ function createToonGradient() {
 
 const easeInOut = k => (k < 0.5 ? 2 * k * k : 1 - ((-2 * k + 2) ** 2) / 2);
 const clamp01 = v => Math.max(0, Math.min(1, v));
-const lerp = (a, b, t) => a + (b - a) * t;
-// Apparition puis disparition en douceur sur la durée d'un effet (0 -> 1 -> 0)
-const envelope = t => clamp01(Math.min(t / 0.15, (1 - t) / 0.15));
 
 // Stun : part de l'effet prise par la foudre, puis moment où les étoiles se mettent à tourner
 const STRIKE_SHARE = 0.42;
@@ -127,7 +124,6 @@ export class Renderer3D {
     this.currentRing = null;
     this.currentPlayerId = null;
     this._lightFactor = 1; // la foudre du Stun assombrit puis illumine la scène
-    this.fxStyles = {};    // dessins à l'essai, par type d'effet (voir setFxStyle)
 
     this._textures = {};
     this._labelTextures = new Map();
@@ -1525,27 +1521,9 @@ export class Renderer3D {
   // === Effets visuels des mains de cartes ===
   //
   // Chaque effet est décrit par le moteur ({ type, ... }) et se joue autour du pion concerné
-  // pendant que l'annonce est à l'écran. Les éléments sont de petites images (pièces, symboles)
-  // qui apparaissent et disparaissent en changeant de taille.
-
-  // Image d'effet, invisible au départ ; sa taille se règle avec _fxScale (1 = taille normale)
-  _fxSprite(material, height) {
-    const sprite = new THREE.Sprite(material);
-    sprite.userData.size = { x: height * material.userData.aspect, y: height };
-    sprite.scale.set(0.0001, 0.0001, 1);
-    sprite.renderOrder = 40;
-    this.fxGroup.add(sprite);
-    return sprite;
-  }
-
-  _fxSymbol(text, height = 0.42, options = { bg: null }) {
-    return this._fxSprite(this._labelMaterial(text, options), height);
-  }
-
-  _fxScale(sprite, factor) {
-    const f = Math.max(0.0001, factor);
-    sprite.scale.set(sprite.userData.size.x * f, sprite.userData.size.y * f, 1);
-  }
+  // pendant que l'annonce est à l'écran. Chacun a son module (lightning.js, dazed.js, diceFx.js,
+  // shieldFx.js, navigatorFx.js, confuseFx.js, tollFx.js, magnetFx.js, rouletteFx.js), qui le
+  // dessine en pixel art ou en petits cubes ; les méthodes ci-dessous lui donnent le pion visé.
 
   // Point juste au-dessus du pion d'un joueur
   _headOf(playerId) {
@@ -1645,12 +1623,6 @@ export class Renderer3D {
         mesh.scale.setScalar(size);
       },
     };
-  }
-
-  // Pour la page d'essai (essais.html) : joue un effet avec l'un des dessins proposés au lieu du
-  // dessin actuel. style : 'classic' ou rien pour le dessin actuel.
-  setFxStyle(type, style) {
-    this.fxStyles[type] = style && style !== 'classic' ? style : null;
   }
 
   // Stun : une salve d'éclairs tombe du ciel sur le joueur visé, qui sursaute ; puis il reste
@@ -1822,56 +1794,29 @@ export class Renderer3D {
     };
   }
 
-  // Fortune du Joker et Chance Dorée : des cartes ou des étoiles tournent de plus en plus serré
-  // au-dessus du joueur, avant que le résultat ne tombe
+  // Roulette qui précède l'effet tiré au sort. Fortune du Joker : des cartes tournent autour du
+  // joueur de plus en plus vite. Chance Dorée : trois rouleaux de machine à sous s'arrêtent l'un
+  // après l'autre au-dessus de lui.
   _fxRoulette(fx, playerId) {
     const token = this.tokens[playerId];
-    if (this.fxStyles.roulette && token) {
-      // Dessin à l'essai
-      const { mesh } = token;
-      const size = mesh.scale.x;
-      const roulette = buildRoulette(this.fxStyles.roulette, {
-        symbol: fx.symbol === 'golden' ? 'golden' : 'joker',
-        mesh,
-        size,
-        top: this._pawnTop(token),
-        ground: token.baseY,
-        right: new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).setY(0).normalize(),
-        camera: this.camera,
-      });
-      this.fxGroup.add(roulette.group);
-      return {
-        update: k => roulette.update(k),
-        cleanup: () => {
-          roulette.dispose();
-          mesh.scale.setScalar(size);
-        },
-      };
-    }
-
-    const head = this._headOf(playerId);
-    const golden = fx.symbol === 'golden';
-    const count = golden ? 6 : 5;
-    const items = Array.from({ length: count }, () => this._fxSymbol(golden ? '⭐' : '🃏', 0.38));
-    const center = golden ? this._fxSymbol('🎰', 0.62) : null;
-
+    if (!token) return { update() {} };
+    const { mesh } = token;
+    const size = mesh.scale.x;
+    const roulette = buildRoulette({
+      symbol: fx.symbol === 'golden' ? 'golden' : 'joker',
+      mesh,
+      size,
+      top: this._pawnTop(token),
+      ground: token.baseY,
+      right: new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).setY(0).normalize(),
+      camera: this.camera,
+    });
+    this.fxGroup.add(roulette.group);
     return {
-      update: (k) => {
-        items.forEach((item, i) => {
-          // Rotation qui s'accélère, rayon qui s'ouvre puis se referme
-          const angle = k * k * Math.PI * 9 + (i / count) * Math.PI * 2;
-          const radius = 0.25 + 0.6 * Math.sin(Math.PI * k);
-          item.position.set(
-            head.x + Math.cos(angle) * radius,
-            head.y + 0.45 + 0.12 * Math.sin(k * 14 + i),
-            head.z + Math.sin(angle) * radius,
-          );
-          this._fxScale(item, envelope(k));
-        });
-        if (center) {
-          center.position.set(head.x, head.y + 0.55, head.z);
-          this._fxScale(center, envelope(k));
-        }
+      update: k => roulette.update(k),
+      cleanup: () => {
+        roulette.dispose();
+        mesh.scale.setScalar(size);
       },
     };
   }
