@@ -1,6 +1,6 @@
 // Banc d'essai (essais.html) : montre les dessins proposés pour un effet, à côté du dessin actuel,
 // sans avoir à lancer une partie ni à attendre que l'effet soit joué. L'effet à l'essai est
-// décrit par TRIAL, plus bas ; en ce moment : le Protecteur GP.
+// décrit par TRIAL, plus bas ; en ce moment : le Navigateur.
 //
 // Chaque vue est la vraie vue 3D du jeu (Renderer3D) sur un vrai plateau. Seule la partie est
 // factice : un joueur attend seul sur une case, et l'effet s'y joue.
@@ -14,34 +14,31 @@ import { TileType } from './engine/board.js';
 import { PLAYER_COLORS } from './engine/player.js';
 import { TIMING } from './controller.js';
 import { Renderer3D } from './renderer3dThree.js';
-import { SHIELD_STYLES } from './shieldFx.js';
+import { NAVIGATOR_STYLES } from './navigatorFx.js';
 
 const OTHER = 0;   // le joueur dont c'est le tour, resté sur la case Départ
 const SUBJECT = 1; // celui sur qui l'effet se joue, seul sur sa case
 
 // L'effet à l'essai
 const TRIAL = {
-  title: 'Protecteur GP',
-  type: 'shield', // type d'effet, pour Renderer3D.setFxStyle
+  title: 'Navigateur',
+  type: 'navigator', // type d'effet, pour Renderer3D.setFxStyle
   // Les dessins montrés : l'actuel ('classic'), puis les propositions, numérotées
-  names: { classic: 'Bulle et symbole', ...SHIELD_STYLES },
-  short: { classic: 'Actuel', drop: 'Ciel', ring: 'Ronde', dome: 'Dôme', bubble: 'Bulle' }, // onglets
+  names: { classic: 'Flèches et symbole', ...NAVIGATOR_STYLES },
+  short: { classic: 'Actuel', drop: 'Ciel', ring: 'Ronde', rose: 'Rose', cubes: 'Cubes' }, // onglets
   notes: {
-    classic: 'Le dessin actuel : une bulle lisse se referme sur le joueur, sous un symbole de bouclier.',
-    drop: 'Un bouclier tombe du ciel et se plante devant le pion, luit, puis se fond en lui.',
-    ring: 'Trois boucliers tournent autour du pion, passent derrière lui, se resserrent et s’y fondent.',
-    dome: 'De petits cubes bleus montent en anneaux et se referment en dôme au-dessus du pion.',
-    bubble: 'Une bulle dessinée, en pixel art, se referme sur le pion par à-coups, puis éclate.',
+    classic: 'Le dessin actuel : quatre flèches plates partent du joueur, sous un symbole de boussole.',
+    drop: 'Une boussole tombe du ciel sur la tête du pion ; son aiguille s’affole, puis quatre flèches filent sur le sol.',
+    ring: 'Quatre flèches tournent autour du pion, passent derrière lui, puis s’élancent chacune dans une direction.',
+    rose: 'Une rose des vents grandit en tournant sous le pion, s’aligne, et lance quatre flèches vers les cases voisines.',
+    cubes: 'Quatre flèches en petits cubes sortent de sous le pion et bondissent jusqu’aux cases voisines.',
   },
   // Variante de l'effet, choisie dans la barre : { label, values, initial }, ou null
   option: null,
-  // Mise en place de la partie factice, avant l'affichage : comme en partie, le joueur porte
-  // déjà l'étiquette de sa protection quand l'effet se joue
-  prepare(game, subject) {
-    subject.gpProtector = 1;
-  },
+  // Mise en place de la partie factice, avant l'affichage
+  prepare() {},
   // L'effet tel que le moteur le décrit, et le joueur qui joue la main
-  fx: () => ({ type: 'shield' }),
+  fx: () => ({ type: 'navigator' }),
   playerId: SUBJECT,
 };
 

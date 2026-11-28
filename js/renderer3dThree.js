@@ -18,6 +18,7 @@ import { buildLightning } from './lightning.js';
 import { buildDazed } from './dazed.js';
 import { buildDice } from './diceFx.js';
 import { buildShield } from './shieldFx.js';
+import { buildNavigator } from './navigatorFx.js';
 
 const TILE_SIZE = 1;
 const TILE_HEIGHT = 1;
@@ -1760,56 +1761,48 @@ export class Renderer3D {
     };
   }
 
-  // Protecteur GP : une bulle se referme autour du joueur, sous un symbole de bouclier (ou l'un
-  // des dessins à l'essai)
+  // Sommet de la tête d'un pion, à son échelle du moment
+  _pawnTop(token) {
+    return new THREE.Vector3(token.mesh.position.x, token.baseY + PAWN_HEIGHT * token.mesh.scale.x, token.mesh.position.z);
+  }
+
+  // Protecteur GP : trois boucliers tournent autour du joueur, se resserrent et se fondent en lui
   _fxShield(playerId) {
     const token = this.tokens[playerId];
-    if (this.fxStyles.shield && token) {
+    if (!token) return { update() {} };
+    const { mesh } = token;
+    const size = mesh.scale.x;
+    const shield = buildShield({ mesh, size, top: this._pawnTop(token), ground: token.baseY, camera: this.camera });
+    this.fxGroup.add(shield.group);
+    return {
+      update: k => shield.update(k),
+      cleanup: () => {
+        shield.dispose();
+        mesh.scale.setScalar(size);
+      },
+    };
+  }
+
+  // Navigateur : quatre flèches partent du joueur, une par direction, sous un symbole de boussole
+  // (ou l'un des dessins à l'essai)
+  _fxNavigator(playerId) {
+    const token = this.tokens[playerId];
+    if (this.fxStyles.navigator && token) {
       const { mesh } = token;
       const size = mesh.scale.x;
-      const shield = buildShield(this.fxStyles.shield, {
-        mesh,
-        size,
-        top: new THREE.Vector3(mesh.position.x, token.baseY + PAWN_HEIGHT * size, mesh.position.z),
-        ground: token.baseY,
-        camera: this.camera,
+      const navigator = buildNavigator(this.fxStyles.navigator, {
+        mesh, size, top: this._pawnTop(token), ground: token.baseY, camera: this.camera, gradientMap: this._toonGradient,
       });
-      this.fxGroup.add(shield.group);
+      this.fxGroup.add(navigator.group);
       return {
-        update: k => shield.update(k),
+        update: k => navigator.update(k),
         cleanup: () => {
-          shield.dispose();
+          navigator.dispose();
           mesh.scale.setScalar(size);
         },
       };
     }
 
-    const head = this._headOf(playerId);
-    const bubble = new THREE.Mesh(
-      new THREE.SphereGeometry(0.55, 24, 16),
-      new THREE.MeshBasicMaterial({ color: 0x5ab0ff, transparent: true, opacity: 0, depthWrite: false }),
-    );
-    bubble.userData.ownMaterial = true;
-    bubble.userData.ownGeometry = true;
-    bubble.position.set(head.x, head.y - 0.45, head.z);
-    bubble.renderOrder = 39;
-    this.fxGroup.add(bubble);
-    const icon = this._fxSymbol('🛡️', 0.5);
-
-    return {
-      update: (k) => {
-        // La bulle arrive grande, se resserre, puis s'efface
-        const size = k < 0.3 ? lerp(2.2, 1, easeInOut(k / 0.3)) : 1 + 0.06 * Math.sin(k * 30);
-        bubble.scale.setScalar(size);
-        bubble.material.opacity = 0.5 * envelope(k);
-        icon.position.set(head.x, head.y + 0.25 + k * 0.5, head.z);
-        this._fxScale(icon, envelope(k));
-      },
-    };
-  }
-
-  // Navigateur : quatre flèches partent du joueur, une par direction
-  _fxNavigator(playerId) {
     const head = this._headOf(playerId);
     const directions = [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }];
     const arrows = directions.map((dir) => {
