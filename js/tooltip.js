@@ -62,8 +62,9 @@ export function tileTooltipHTML(game, tileId) {
   return lines.join('');
 }
 
-// Place l'infobulle près du pointeur sans sortir de l'écran
-export function showTooltip(el, html, clientX, clientY) {
+// Place l'infobulle près du pointeur sans sortir de l'écran. Au doigt (`touch`), elle se met
+// au-dessus du point touché, centrée, pour ne pas rester cachée sous la main.
+export function showTooltip(el, html, clientX, clientY, touch = false) {
   if (!html) {
     el.classList.add('hidden');
     return;
@@ -71,11 +72,20 @@ export function showTooltip(el, html, clientX, clientY) {
   el.innerHTML = html;
   el.classList.remove('hidden');
 
-  const offset = 14;
-  let x = clientX + offset;
-  let y = clientY + offset;
-  if (x + el.offsetWidth > window.innerWidth - 8) x = clientX - el.offsetWidth - offset;
-  if (y + el.offsetHeight > window.innerHeight - 8) y = clientY - el.offsetHeight - offset;
+  let x;
+  let y;
+  if (touch) {
+    const gap = 26;
+    x = Math.min(clientX - el.offsetWidth / 2, window.innerWidth - el.offsetWidth - 6);
+    y = clientY - el.offsetHeight - gap;
+    if (y < 4) y = clientY + gap;
+  } else {
+    const offset = 14;
+    x = clientX + offset;
+    y = clientY + offset;
+    if (x + el.offsetWidth > window.innerWidth - 8) x = clientX - el.offsetWidth - offset;
+    if (y + el.offsetHeight > window.innerHeight - 8) y = clientY - el.offsetHeight - offset;
+  }
   el.style.left = `${Math.max(4, x)}px`;
   el.style.top = `${Math.max(4, y)}px`;
 }

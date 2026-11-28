@@ -84,6 +84,13 @@ const lerp = (a, b, t) => a + (b - a) * t;
 // Apparition puis disparition en douceur sur la durée d'un effet (0 -> 1 -> 0)
 const envelope = t => clamp01(Math.min(t / 0.15, (1 - t) / 0.15));
 
+// Déplacement toléré, en pixels, pour qu'un appui compte encore comme un clic
+const TAP_SLACK_MOUSE = 5;
+const TAP_SLACK_TOUCH = 12;
+// Au doigt, distance (pixels) jusqu'à laquelle un appui à côté d'une case à choisir la désigne
+const TOUCH_PICK_RADIUS = 34;
+const INSET_SIDES = ['top', 'right', 'bottom', 'left'];
+
 export class Renderer3D {
   constructor() {
     this.wrapper = null;
@@ -138,6 +145,10 @@ export class Renderer3D {
     this.onTileClick = null;    // (tileId, clientX, clientY)
     this.onViewChange = null;   // la caméra a bougé
     this.onFollowChange = null; // (bool) le suivi a été coupé par un déplacement manuel
+
+    // Place prise par l'interface sur chaque bord (pixels) : valeur affichée, et valeur à rejoindre
+    this._insets = { top: 0, right: 0, bottom: 0, left: 0 };
+    this._insetsGoal = { top: 0, right: 0, bottom: 0, left: 0 };
   }
 
   // === Initialisation ===
@@ -158,7 +169,8 @@ export class Renderer3D {
     canvas.style.touchAction = 'none';
     wrapperEl.appendChild(canvas);
 
-    // Clic gauche : tourner ; clic droit ou deux doigts : déplacer ; molette ou pincement : zoom
+    // Souris : clic gauche pour tourner, clic droit pour déplacer, molette pour zoomer.
+    // Doigts : un doigt déplace le plateau, deux doigts le font tourner et zoomer.
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.12;
@@ -166,6 +178,9 @@ export class Renderer3D {
     this.controls.minDistance = 3;
     this.controls.maxDistance = 80;
     this.controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+    this.controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
+    // Déplacer la vue fait glisser le plateau sur son plan : le point visé reste au sol
+    this.controls.screenSpacePanning = false;
 
     this._toonGradient = createToonGradient();
 
@@ -215,28 +230,50 @@ export class Renderer3D {
     this._listeners = new AbortController();
     const signal = this._listeners.signal;
     this._activePointers = new Set();
+    this._gesture = null; // appui en cours : { x, y, touch, moved, multi }
 
     canvas.addEventListener('pointerdown', (e) => {
       this._activePointers.add(e.pointerId);
-      if (e.button === 0) this._clickStart = { x: e.clientX, y: e.clientY };
+      const touch = e.pointerType === 'touch';
+      if (this._activePointers.size >= 2) {
+        if (this._gesture) this._gesture.multi = true;
+      } else if (e.button === 0) {
+        this._gesture = { x: e.clientX, y: e.clientY, touch, moved: false, multi: false };
+      }
       this._autoFrame = false; // la vue est désormais réglée à la main
-      // Déplacer la vue à la main coupe le suivi automatique du joueur
-      if (e.button === 2 || this._activePointers.size >= 2) this._setFollow(false, true);
+      // Déplacer la vue à la main (clic droit) coupe le suivi automatique du joueur
+      if (e.button === 2 && !touch) this._setFollow(false, true);
     }, { signal });
     canvas.addEventListener('pointerup', (e) => {
       this._activePointers.delete(e.pointerId);
-      if (e.button === 0 && this._clickStart) {
-        const dx = e.clientX - this._clickStart.x;
-        const dy = e.clientY - this._clickStart.y;
-        if (dx * dx + dy * dy < 25) this._onClick(e);
-        this._clickStart = null;
-      }
+      const gesture = this._gesture;
+      if (!gesture || this._activePointers.size > 0) return;
+      this._gesture = null;
+      // Un appui sans glissement, d'un seul doigt, vaut un clic
+      if (e.button === 0 && !gesture.moved && !gesture.multi) this._onClick(e);
     }, { signal });
-    canvas.addEventListener('pointercancel', (e) => this._activePointers.delete(e.pointerId), { signal });
+    canvas.addEventListener('pointercancel', (e) => {
+      this._activePointers.delete(e.pointerId);
+      if (this._activePointers.size === 0) this._gesture = null;
+    }, { signal });
     canvas.addEventListener('pointermove', (e) => {
+      const gesture = this._gesture;
+      if (gesture && !gesture.moved) {
+        const dx = e.clientX - gesture.x;
+        const dy = e.clientY - gesture.y;
+        const slack = gesture.touch ? TAP_SLACK_TOUCH : TAP_SLACK_MOUSE;
+        if (dx * dx + dy * dy > slack * slack) {
+          gesture.moved = true;
+          // Au doigt, faire glisser le plateau coupe le suivi automatique du joueur
+          if (gesture.touch && !gesture.multi) this._setFollow(false, true);
+        }
+      }
+      // Pas de survol au doigt : les informations d'une case s'affichent à l'appui (_onClick)
+      if (e.pointerType === 'touch') return;
       this._pointer = { clientX: e.clientX, clientY: e.clientY, dragging: e.buttons !== 0, dirty: true };
     }, { signal });
     canvas.addEventListener('pointerleave', (e) => {
+      if (e.pointerType === 'touch') return;
       this._pointer = null;
       this._setHover(null, e.clientX, e.clientY);
     }, { signal });
@@ -257,8 +294,32 @@ export class Renderer3D {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.webglRenderer.setSize(w, h);
+    this._applyViewOffset();
+  }
 
-    // Fenêtre redimensionnée : on recadre, tant que le joueur n'a pas réglé la vue lui-même
+  // Place prise par l'interface sur chaque bord de la vue, en pixels : la caméra vise alors le
+  // centre de la zone restée libre. Le passage d'un réglage à l'autre est progressif, sauf si
+  // `immediate`.
+  setViewInsets(insets, immediate = false) {
+    for (const side of INSET_SIDES) this._insetsGoal[side] = Math.max(0, insets[side] || 0);
+    if (immediate) {
+      Object.assign(this._insets, this._insetsGoal);
+      this._applyViewOffset();
+    }
+  }
+
+  // Décale l'image pour que le point visé tombe au centre de la zone libre, puis recadre le
+  // plateau tant que le joueur n'a pas réglé la vue lui-même
+  _applyViewOffset() {
+    const w = this.wrapper.clientWidth;
+    const h = this.wrapper.clientHeight;
+    if (w === 0 || h === 0) return;
+    const { top, right, bottom, left } = this._insets;
+    const dx = (left - right) / 2;
+    const dy = (top - bottom) / 2;
+    if (dx === 0 && dy === 0) this.camera.clearViewOffset();
+    else this.camera.setViewOffset(w, h, -dx, -dy, w, h);
+
     if (this._autoFrame && this._bounds) {
       this.cameraDistance = this._fitDistance();
       this._applyCameraAngles();
@@ -375,6 +436,16 @@ export class Renderer3D {
         this.camera.position.add(delta);
       }
     }
+
+    // Zone libre de l'écran : le décalage de la vue rejoint peu à peu sa cible
+    let shifting = false;
+    for (const side of INSET_SIDES) {
+      const gap = this._insetsGoal[side] - this._insets[side];
+      if (gap === 0) continue;
+      this._insets[side] = Math.abs(gap) < 0.5 ? this._insetsGoal[side] : this._insets[side] + gap * (1 - Math.exp(-dt * 9));
+      shifting = true;
+    }
+    if (shifting) this._applyViewOffset();
 
     this.controls.update();
     this._updateHover();
@@ -771,8 +842,14 @@ export class Renderer3D {
     const tilt = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(this.cameraTilt, 1, 85));
     const sin = Math.sin(tilt);
     const cos = Math.cos(tilt);
-    const tanV = Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2);
-    const tanH = tanV * this.camera.aspect;
+    // Seule la zone que l'interface laisse libre compte pour faire tenir le plateau
+    const width = this.wrapper.clientWidth;
+    const height = this.wrapper.clientHeight;
+    const freeW = Math.max(0.3, 1 - (this._insets.left + this._insets.right) / width);
+    const freeH = Math.max(0.3, 1 - (this._insets.top + this._insets.bottom) / height);
+    const tanFull = Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2);
+    const tanV = tanFull * freeH;
+    const tanH = tanFull * this.camera.aspect * freeW;
 
     // Largeur : le bord le plus proche de la caméra est celui qui paraît le plus large
     const forWidth = halfWidth / tanH + halfDepth * sin;
@@ -781,8 +858,10 @@ export class Renderer3D {
     const forFarEdge = (halfDepth * cos + TILE_HEIGHT * sin) / tanV - halfDepth * sin;
     const fit = Math.max(forWidth, forNearEdge, forFarEdge) * 1.15;
 
-    const MIN_TILE_PIXELS = 50;
-    const readable = this.wrapper.clientHeight / (MIN_TILE_PIXELS * 2 * tanV);
+    // Taille minimale d'une case à l'écran : 50 pixels, un peu moins sur un petit écran pour
+    // garder une vue d'ensemble
+    const minTilePixels = THREE.MathUtils.clamp(Math.min(width, height) / 8, 38, 50);
+    const readable = height / (minTilePixels * 2 * tanFull);
     return THREE.MathUtils.clamp(Math.min(fit, readable), 6, 60);
   }
 
@@ -1821,13 +1900,41 @@ export class Renderer3D {
   }
 
   _onClick(e) {
-    const tileId = this._tileAt(e.clientX, e.clientY);
-    if (tileId === null) return;
+    const touch = e.pointerType === 'touch';
+    let tileId = this._tileAt(e.clientX, e.clientY);
     if (this._pick) {
-      if (this._pick.ids.has(tileId)) this._resolvePick(tileId);
-      return;
+      // Au doigt, on vise moins juste : la cible la plus proche du point touché fait l'affaire
+      if (touch && (tileId === null || !this._pick.ids.has(tileId))) {
+        const near = this._nearestPick(e.clientX, e.clientY, tileId === null ? TOUCH_PICK_RADIUS : TOUCH_PICK_RADIUS / 2);
+        if (near !== null) tileId = near;
+      }
+      if (tileId !== null && this._pick.ids.has(tileId)) {
+        this._resolvePick(tileId);
+        return;
+      }
+      // À la souris, le survol renseigne déjà ; au doigt, toucher une autre case en donne le détail
+      if (!touch) return;
     }
-    if (this.onTileClick) this.onTileClick(tileId, e.clientX, e.clientY);
+    if (this.onTileClick) this.onTileClick(tileId, e.clientX, e.clientY, e.pointerType);
+  }
+
+  // Parmi les cases à choisir, celle dont le repère (flèche ou surbrillance) est le plus proche
+  // du point de l'écran, à moins de `radius` pixels. null s'il n'y en a pas.
+  _nearestPick(clientX, clientY, radius) {
+    const rect = this.webglRenderer.domElement.getBoundingClientRect();
+    let nearest = null;
+    let best = radius * radius;
+    for (const marker of this._pick.markers) {
+      const p = this._tmp.copy(marker.position).project(this.camera);
+      if (p.z > 1) continue; // derrière la caméra
+      const dx = rect.left + (p.x + 1) / 2 * rect.width - clientX;
+      const dy = rect.top + (1 - p.y) / 2 * rect.height - clientY;
+      if (dx * dx + dy * dy < best) {
+        best = dx * dx + dy * dy;
+        nearest = marker.userData.tileId;
+      }
+    }
+    return nearest;
   }
 
   // === Nettoyage ===
