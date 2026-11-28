@@ -100,6 +100,7 @@ async function loadBoards() {
 }
 
 $('btn-start').addEventListener('click', () => {
+  enterFullscreenOnPhone();
   populateBoardSelect();
   $('setup-error').hidden = true;
   showScreen('setup-screen');
@@ -356,10 +357,21 @@ function requestFullscreen() {
   document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
 }
 
-// Sur téléphone, les barres du navigateur prennent une bonne part de l'écran : une partie se
-// lance en plein écran (le bouton des commandes permet d'en sortir)
+// Sur téléphone, les barres du navigateur prennent une bonne part de l'écran : le jeu passe en
+// plein écran dès qu'on lance ou prépare une partie (le bouton des commandes permet d'en sortir)
 function enterFullscreenOnPhone() {
   if (isPhone()) requestFullscreen();
+}
+
+// Sur téléphone, le jeu se joue en portrait. Un navigateur ne laisse verrouiller l'orientation
+// qu'en plein écran : dès qu'on y entre, l'affichage passe en portrait et y reste, même si
+// l'appareil est tenu ou posé en paysage. Le verrou tombe de lui-même en quittant le plein écran ;
+// la mise en page paysage sert alors de repli, comme sur les navigateurs qui ne savent pas verrouiller.
+function lockPortraitOnPhone() {
+  if (!isPhone() || !document.fullscreenElement) return;
+  try {
+    window.screen.orientation.lock('portrait').catch(() => {});
+  } catch { /* verrouillage non pris en charge */ }
 }
 
 $('btn-fullscreen').addEventListener('click', () => {
@@ -367,7 +379,10 @@ $('btn-fullscreen').addEventListener('click', () => {
   if (document.fullscreenElement) document.exitFullscreen();
   else requestFullscreen();
 });
-document.addEventListener('fullscreenchange', refreshControlButtons);
+document.addEventListener('fullscreenchange', () => {
+  refreshControlButtons();
+  lockPortraitOnPhone();
+});
 
 // Pendant une partie, l'écran ne se met pas en veille (les tours des adversaires se regardent
 // sans toucher l'écran). Le verrou tombe quand la page passe à l'arrière-plan : on le reprend.
