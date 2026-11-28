@@ -1,6 +1,6 @@
 // Banc d'essai (essais.html) : montre les dessins proposés pour un effet, à côté du dessin actuel,
 // sans avoir à lancer une partie ni à attendre que l'effet soit joué. L'effet à l'essai est
-// décrit par TRIAL, plus bas ; en ce moment : l'Aimant GP.
+// décrit par TRIAL, plus bas ; en ce moment : les roulettes (Fortune du Joker, Chance Dorée).
 //
 // Chaque vue est la vraie vue 3D du jeu (Renderer3D) sur un vrai plateau. Seule la partie est
 // factice : un joueur attend sur une case à l'écart, et l'effet s'y joue.
@@ -14,40 +14,36 @@ import { TileType } from './engine/board.js';
 import { PLAYER_COLORS } from './engine/player.js';
 import { TIMING } from './controller.js';
 import { Renderer3D } from './renderer3dThree.js';
-import { MAGNET_STYLES } from './magnetFx.js';
+import { ROULETTE_STYLES } from './rouletteFx.js';
 
 const OTHER = 0;   // le joueur dont c'est le tour, resté sur la case Départ
 const SUBJECT = 1; // celui sur qui l'effet se joue, sur une case à l'écart
 
 // L'effet à l'essai
 const TRIAL = {
-  title: 'Aimant GP',
-  type: 'magnet', // type d'effet, pour Renderer3D.setFxStyle
+  title: 'Roulettes',
+  type: 'roulette', // type d'effet, pour Renderer3D.setFxStyle
   // Les dessins montrés : l'actuel ('classic'), puis les propositions, numérotées
-  names: { classic: 'Symboles de pièce', ...MAGNET_STYLES },
-  short: { classic: 'Actuel', drop: 'Ciel', ring: 'Ronde', leap: 'Bonds', waves: 'Ondes' }, // onglets
+  names: { classic: 'Symboles qui tournent', ...ROULETTE_STYLES },
+  short: { classic: 'Actuel', drop: 'Ciel', ring: 'Ronde', row: 'Main', wheel: 'Roue' }, // onglets
   notes: {
-    classic: 'Le dessin actuel : des symboles de pièce partent des cases adverses et arrivent en tourbillon sur le joueur.',
-    drop: 'Un aimant tombe du ciel sur la tête du pion et attire à lui les pièces des cases adverses.',
-    ring: 'Les pièces quittent les cases adverses, viennent tourner autour du pion, puis se fondent en lui.',
-    leap: 'Des pièces en volume jaillissent des cases adverses, retombent autour du pion, puis sautent vers lui.',
-    waves: 'Des ondes partent du pion sur le sol ; à leur passage, les pièces des cases adverses filent vers lui.',
+    classic: 'Le dessin actuel : des symboles de carte, ou d’étoile autour d’une machine à sous, tournent au-dessus du joueur.',
+    drop: 'Une carte tombe du ciel sur la tête du pion et s’y retourne sans fin ; pour la Chance Dorée, une machine à sous dont les fenêtres s’arrêtent une à une.',
+    ring: 'Des cartes tournent autour du pion de plus en plus vite, de dos derrière lui, de face devant ; pour la Chance Dorée, des étoiles et des pièces.',
+    row: 'Cinq cartes en éventail sont battues, puis celle du milieu se retourne ; pour la Chance Dorée, trois rouleaux s’arrêtent l’un après l’autre.',
+    wheel: 'Une roue de la fortune tourne au-dessus du pion sous son aiguille, et ralentit.',
   },
   // Variante de l'effet, choisie dans la barre : { label, values, initial }, ou null
-  option: null,
+  option: { label: 'Main', values: { joker: 'Fortune du Joker', golden: 'Chance Dorée' }, initial: 'joker' },
   // Joueurs de la partie factice : celui dont c'est le tour, puis ceux sur qui l'effet se joue
-  players: ['Adversaire', 'Joueur'],
-  // Mise en place de la partie factice, avant l'affichage. spot : la case à l'écart, où se trouve
-  // déjà le joueur SUBJECT. Son adversaire possède les cases alentour.
-  prepare(game, spot, renderer) {
-    for (const tile of nearestTiles(game, renderer, spot, 7).filter(tile => tile.id !== spot)) {
-      tile.owner = OTHER;
-      tile.level = 1;
-    }
-  },
-  // L'effet tel que le moteur le décrit, et le joueur qui joue la main
-  fx: (option, game) => ({ type: 'magnet', tileIds: game.tiles.filter(tile => tile.owner === OTHER).map(tile => tile.id) }),
+  players: ['Autre', 'Joueur'],
+  // Mise en place de la partie factice, avant l'affichage
+  prepare() {},
+  // L'effet tel que le moteur le décrit : la roulette, puis l'effet tiré (les dés, pour l'exemple)
+  fx: option => ({ type: 'roulette', symbol: option, then: { type: 'dice', count: 2 } }),
   playerId: SUBJECT,
+  // Durée de l'effet, avant division par la vitesse (par défaut, celle d'une annonce)
+  duration: TIMING.roulette,
 };
 
 const STYLES = Object.keys(TRIAL.names);
@@ -194,7 +190,7 @@ function play(view) {
   if (!renderer || building || view.playing) return Promise.resolve();
   view.playing = true;
   view.el.classList.add('playing');
-  return renderer.playEffect(TRIAL.fx(state.option, view.game), TRIAL.playerId, TIMING.announce / state.speed).then(() => {
+  return renderer.playEffect(TRIAL.fx(state.option, view.game), TRIAL.playerId, (TRIAL.duration || TIMING.announce) / state.speed).then(() => {
     if (view.renderer !== renderer) return; // vue reconstruite entre-temps
     view.playing = false;
     view.el.classList.remove('playing');

@@ -22,6 +22,7 @@ import { buildNavigator } from './navigatorFx.js';
 import { buildConfuse } from './confuseFx.js';
 import { buildToll } from './tollFx.js';
 import { buildMagnet } from './magnetFx.js';
+import { buildRoulette } from './rouletteFx.js';
 
 const TILE_SIZE = 1;
 const TILE_HEIGHT = 1;
@@ -1527,11 +1528,6 @@ export class Renderer3D {
   // pendant que l'annonce est à l'écran. Les éléments sont de petites images (pièces, symboles)
   // qui apparaissent et disparaissent en changeant de taille.
 
-  // Pièce d'or, en pixel art comme les autres symboles
-  _coinMaterial() {
-    return this._labelMaterial('🪙', { bg: null });
-  }
-
   // Image d'effet, invisible au départ ; sa taille se règle avec _fxScale (1 = taille normale)
   _fxSprite(material, height) {
     const sprite = new THREE.Sprite(material);
@@ -1625,66 +1621,29 @@ export class Renderer3D {
     };
   }
 
-  // Aimant GP : des pièces partent des cases adverses et arrivent en tourbillon sur le joueur
+  // Aimant GP : des pièces quittent les cases adverses, viennent tourner autour du joueur, puis
+  // se fondent en lui
   _fxMagnet(fx, playerId) {
-    const pawn = this.tokens[playerId];
-    if (this.fxStyles.magnet && pawn) {
-      // Dessin à l'essai : les pièces partent du dessus des cases adverses ; s'il y en a peu, il
-      // en vient aussi de tout autour
-      const { mesh } = pawn;
-      const size = mesh.scale.x;
-      const sources = (fx.tileIds || []).slice(0, 14)
-        .map(id => this.tileCenters[id]).filter(Boolean)
-        .map(c => new THREE.Vector3(c.x, c.top, c.z));
-      for (let i = sources.length; i < 8; i++) {
-        const angle = (i / 8) * Math.PI * 2;
-        sources.push(new THREE.Vector3(mesh.position.x + Math.cos(angle) * 2.6, pawn.baseY, mesh.position.z + Math.sin(angle) * 2.6));
-      }
-      const magnet = buildMagnet(this.fxStyles.magnet, {
-        mesh, size, top: this._pawnTop(pawn), ground: pawn.baseY, sources, camera: this.camera, gradientMap: this._toonGradient,
-      });
-      this.fxGroup.add(magnet.group);
-      return {
-        update: k => magnet.update(k),
-        cleanup: () => {
-          magnet.dispose();
-          mesh.scale.setScalar(size);
-        },
-      };
-    }
-
-    const head = this._headOf(playerId);
-    const starts = (fx.tileIds || []).slice(0, 14)
-      .map(id => this.tileCenters[id]).filter(Boolean)
-      .map(c => new THREE.Vector3(c.x, c.top + 0.3, c.z));
-    // Peu ou pas de cases adverses : des pièces arrivent aussi de tout autour
-    for (let i = starts.length; i < 8; i++) {
-      const angle = (i / 8) * Math.PI * 2;
-      starts.push(new THREE.Vector3(head.x + Math.cos(angle) * 2.6, head.y + 0.5, head.z + Math.sin(angle) * 2.6));
-    }
-    const coins = starts.map(() => this._fxSprite(this._coinMaterial(), 0.3));
     const token = this.tokens[playerId];
-    const baseScale = token.mesh.scale.x;
-
+    if (!token) return { update() {} };
+    const { mesh } = token;
+    const size = mesh.scale.x;
+    const sources = (fx.tileIds || []).slice(0, 14)
+      .map(id => this.tileCenters[id]).filter(Boolean)
+      .map(c => new THREE.Vector3(c.x, c.top, c.z));
+    // Peu ou pas de cases adverses : des pièces arrivent aussi de tout autour
+    for (let i = sources.length; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      sources.push(new THREE.Vector3(mesh.position.x + Math.cos(angle) * 2.6, token.baseY, mesh.position.z + Math.sin(angle) * 2.6));
+    }
+    const magnet = buildMagnet({ mesh, size, top: this._pawnTop(token), ground: token.baseY, sources, camera: this.camera });
+    this.fxGroup.add(magnet.group);
     return {
-      update: (k) => {
-        coins.forEach((coin, i) => {
-          const delay = (i / coins.length) * 0.4;
-          const t = clamp01((k - delay) / 0.6);
-          const e = easeInOut(t);
-          const angle = t * Math.PI * 4 + i * 1.7;
-          const radius = (1 - t) * 0.7;
-          coin.position.set(
-            lerp(starts[i].x, head.x, e) + Math.cos(angle) * radius,
-            lerp(starts[i].y, head.y, e) + Math.sin(Math.PI * t) * 1.1,
-            lerp(starts[i].z, head.z, e) + Math.sin(angle) * radius,
-          );
-          this._fxScale(coin, t <= 0 ? 0 : clamp01(Math.min(t / 0.12, (1 - t) / 0.1)));
-        });
-        // Le pion gonfle à mesure que les pièces arrivent
-        token.mesh.scale.setScalar(baseScale * (1 + 0.25 * Math.sin(Math.PI * clamp01((k - 0.5) / 0.5))));
+      update: k => magnet.update(k),
+      cleanup: () => {
+        magnet.dispose();
+        mesh.scale.setScalar(size);
       },
-      cleanup: () => token.mesh.scale.setScalar(baseScale),
     };
   }
 
@@ -1866,6 +1825,30 @@ export class Renderer3D {
   // Fortune du Joker et Chance Dorée : des cartes ou des étoiles tournent de plus en plus serré
   // au-dessus du joueur, avant que le résultat ne tombe
   _fxRoulette(fx, playerId) {
+    const token = this.tokens[playerId];
+    if (this.fxStyles.roulette && token) {
+      // Dessin à l'essai
+      const { mesh } = token;
+      const size = mesh.scale.x;
+      const roulette = buildRoulette(this.fxStyles.roulette, {
+        symbol: fx.symbol === 'golden' ? 'golden' : 'joker',
+        mesh,
+        size,
+        top: this._pawnTop(token),
+        ground: token.baseY,
+        right: new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).setY(0).normalize(),
+        camera: this.camera,
+      });
+      this.fxGroup.add(roulette.group);
+      return {
+        update: k => roulette.update(k),
+        cleanup: () => {
+          roulette.dispose();
+          mesh.scale.setScalar(size);
+        },
+      };
+    }
+
     const head = this._headOf(playerId);
     const golden = fx.symbol === 'golden';
     const count = golden ? 6 : 5;
