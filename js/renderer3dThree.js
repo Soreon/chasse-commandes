@@ -16,6 +16,7 @@ import { pixelLabelCanvas } from './pixelLabel.js';
 import { buildPawn, PAWN_HEIGHT } from './pawn.js';
 import { buildLightning } from './lightning.js';
 import { buildDazed } from './dazed.js';
+import { buildDice } from './diceFx.js';
 
 const TILE_SIZE = 1;
 const TILE_HEIGHT = 1;
@@ -1662,23 +1663,18 @@ export class Renderer3D {
   }
 
   // Stun : une salve d'éclairs tombe du ciel sur le joueur visé, qui sursaute ; puis il reste
-  // sonné (des étoiles tournent au-dessus de sa tête pendant qu'il vacille, ou l'un des dessins
-  // à l'essai)
+  // sonné, et une ronde d'étoiles tourne autour de sa tête pendant qu'il vacille
   _fxStun(targetId) {
-    const stars = ['💫', '💫', '💫'];
     const token = this.tokens[targetId];
-    if (!token) return this._fxOrbit([targetId], stars);
+    if (!token) return { update() {} };
 
     const { mesh } = token;
     const size = mesh.scale.x;
     const top = new THREE.Vector3(mesh.position.x, token.baseY + PAWN_HEIGHT * size, mesh.position.z);
     const strike = buildLightning({ top, ground: token.baseY });
     this.fxGroup.add(strike.group);
-    const dazed = this.fxStyles.stun
-      ? buildDazed(this.fxStyles.stun, { mesh, size, top, ground: token.baseY, camera: this.camera })
-      : null;
-    if (dazed) this.fxGroup.add(dazed.group);
-    const orbit = dazed ? null : this._fxOrbit([targetId], stars, { startAt: STUN_STARS_AT });
+    const dazed = buildDazed({ mesh, size, top, camera: this.camera });
+    this.fxGroup.add(dazed.group);
     // Matières du pion (les siennes seulement) : elles blanchissent à chaque éclair
     const materials = new Set();
     mesh.traverse((part) => {
@@ -1689,26 +1685,20 @@ export class Renderer3D {
       update: (k) => {
         const t = clamp01(k / STRIKE_SHARE);
         const glow = strike.update(t);
-        if (orbit) orbit.update(k);
         // Le temps de la frappe, le ciel s'assombrit ; chaque éclair illumine la scène et le pion
         this._setLightFactor(1 - 0.3 * Math.sin(Math.PI * t) + 0.75 * glow);
-        let shine = glow;
+        for (const material of materials) material.emissive.setScalar(0.7 * glow);
         if (k < STUN_STARS_AT) {
           // Frappé, le pion s'aplatit et tressaute
           const hit = glow >= 0.5;
           mesh.scale.set(size * (hit ? 1.14 : 1), size * (hit ? 0.84 : 1), size * (hit ? 1.14 : 1));
           mesh.rotation.z = hit ? Math.sign(Math.sin(k * 300)) * 0.16 : 0;
-        } else if (dazed) {
-          // Le dessin à l'essai anime lui-même le pion
-          shine = Math.max(glow, dazed.update((k - STUN_STARS_AT) / (1 - STUN_STARS_AT)));
         } else {
-          mesh.scale.setScalar(size);
+          dazed.update((k - STUN_STARS_AT) / (1 - STUN_STARS_AT)); // les étoiles, et le pion qui vacille
         }
-        for (const material of materials) material.emissive.setScalar(0.7 * shine);
       },
       cleanup: () => {
-        if (orbit) orbit.cleanup();
-        if (dazed) dazed.dispose();
+        dazed.dispose();
         strike.dispose();
         this._setLightFactor(1);
         for (const material of materials) material.emissive.setScalar(0);
@@ -1718,9 +1708,8 @@ export class Renderer3D {
     };
   }
 
-  // Stun et Confusion : des symboles tournent au-dessus de la tête des joueurs visés, dont le pion
-  // vacille. Ils attendent `startAt` (part de l'effet) avant d'apparaître.
-  _fxOrbit(targetIds, symbols, { startAt = 0 } = {}) {
+  // Confusion : des symboles tournent au-dessus de la tête des joueurs visés, dont le pion vacille
+  _fxOrbit(targetIds, symbols) {
     const targets = targetIds.map(id => ({ token: this.tokens[id], head: this._headOf(id) })).filter(t => t.token && t.head);
     const groups = targets.map(target => ({
       ...target,
@@ -1731,13 +1720,12 @@ export class Renderer3D {
       update: (k) => {
         for (const group of groups) {
           const { head } = group;
-          const t = clamp01((k - startAt) / (1 - startAt));
           group.items.forEach((item, i) => {
-            const angle = t * Math.PI * 5 + (i / group.items.length) * Math.PI * 2;
+            const angle = k * Math.PI * 5 + (i / group.items.length) * Math.PI * 2;
             item.position.set(head.x + Math.cos(angle) * 0.34, head.y + 0.2, head.z + Math.sin(angle) * 0.34);
-            this._fxScale(item, k < startAt ? 0 : envelope(t));
+            this._fxScale(item, envelope(k));
           });
-          group.token.mesh.rotation.z = k < startAt ? 0 : Math.sin(k * 42) * 0.32 * (1 - t);
+          group.token.mesh.rotation.z = Math.sin(k * 42) * 0.32 * (1 - k);
         }
       },
       cleanup: () => {
@@ -1747,7 +1735,31 @@ export class Renderer3D {
   }
 
   // Double Dé, Triple Dé : les dés jaillissent et tournent en rebondissant au-dessus du joueur
+  // (des symboles, ou l'un des dessins à l'essai)
   _fxDice(fx, playerId) {
+    const token = this.tokens[playerId];
+    if (this.fxStyles.dice && token) {
+      const { mesh } = token;
+      const size = mesh.scale.x;
+      const dice = buildDice(this.fxStyles.dice, {
+        count: fx.count || 2,
+        mesh,
+        size,
+        top: new THREE.Vector3(mesh.position.x, token.baseY + PAWN_HEIGHT * size, mesh.position.z),
+        ground: token.baseY,
+        right: new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).setY(0).normalize(),
+        gradientMap: this._toonGradient,
+      });
+      this.fxGroup.add(dice.group);
+      return {
+        update: k => dice.update(k),
+        cleanup: () => {
+          dice.dispose();
+          mesh.scale.setScalar(size);
+        },
+      };
+    }
+
     const head = this._headOf(playerId);
     const dice = Array.from({ length: fx.count || 2 }, () => this._fxSymbol('🎲', 0.46));
     return {

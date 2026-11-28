@@ -51,15 +51,13 @@ const SPREAD = 0.36;                  // distance du pion à laquelle tombent le
 // Image en cours d'un déroulé : la première ligne dont la fin (première colonne) dépasse t
 const stepAt = (script, t) => script.find(step => t < step[0]) || script[script.length - 1];
 
-// Montre un éclair sous l'un de ses aspects (ou rien). `tag` distingue les éclairs qu'une même
-// image montre tour à tour.
-export function showBolt(item, grid, look, tag = '') {
+function showBolt(item, grid, look) {
   if (!look) {
     item.show(null);
   } else if (look === 'fade') {
-    item.show(`${tag}|fade`, grid, BOLT, (x, y, code) => code !== EDGE && (x + y) % 2 === 0);
+    item.show(look, grid, BOLT, (x, y, code) => code !== EDGE && (x + y) % 2 === 0);
   } else {
-    item.show(`${tag}|${look}`, grid, look === 'flash' ? BOLT_FLASH : BOLT);
+    item.show(look, grid, look === 'flash' ? BOLT_FLASH : BOLT);
   }
 }
 

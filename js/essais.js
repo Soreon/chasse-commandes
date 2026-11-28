@@ -1,49 +1,64 @@
 // Banc d'essai (essais.html) : montre les dessins proposés pour un effet, à côté du dessin actuel,
-// sans avoir à lancer une partie ni à attendre que l'effet soit joué. En ce moment : ce qui suit
-// la foudre du Stun.
+// sans avoir à lancer une partie ni à attendre que l'effet soit joué. L'effet à l'essai est
+// décrit par TRIAL, plus bas ; en ce moment : les dés du Double Dé et du Triple Dé.
 //
 // Chaque vue est la vraie vue 3D du jeu (Renderer3D) sur un vrai plateau. Seule la partie est
-// factice : un joueur étourdi attend seul sur une case, et la foudre lui tombe dessus.
+// factice : un joueur attend seul sur une case, et l'effet s'y joue.
 //   - Grand écran : une vue par dessin, côte à côte.
-//   - Petit écran (téléphone) : une seule vue, et un onglet par dessin. Quatre vues 3D seraient
+//   - Petit écran (téléphone) : une seule vue, et un onglet par dessin. Plusieurs vues 3D seraient
 //     trop lourdes, et un doigt posé sur une vue déplace sa caméra au lieu de faire défiler la page.
-// Page provisoire, à retirer avec les dessins écartés une fois le choix fait.
+// Page provisoire, à retirer quand tous les effets auront leur dessin.
 
 import { Game } from './engine/game.js';
 import { TileType } from './engine/board.js';
 import { PLAYER_COLORS } from './engine/player.js';
 import { TIMING } from './controller.js';
 import { Renderer3D } from './renderer3dThree.js';
-import { DAZED_STYLES } from './dazed.js';
+import { DICE_STYLES } from './diceFx.js';
 
-// Les dessins montrés : l'actuel ('classic'), puis ceux à l'essai, numérotés
-const FX_TYPE = 'stun';
-const NAMES = { classic: 'Étoiles qui tournent', ...DAZED_STYLES };
-const STYLES = Object.keys(NAMES);
-const SHORT = { classic: 'Actuel', smoke: 'Fumée', arcs: 'Arcs', cage: 'Cage', stars: 'Étoiles' }; // noms des onglets
-const NOTES = {
-  classic: 'Le dessin actuel : trois symboles d’étoile tournent au-dessus de la tête.',
-  smoke: 'Le pion sort noirci de la foudre ; de la fumée monte de sa tête et il tousse.',
-  arcs: 'De petits éclairs claquent encore autour du pion, qui tressaute à chaque fois.',
-  cage: 'Quatre éclairs restent plantés autour du pion, raidi : il ne peut plus bouger.',
-  stars: 'Des étoiles redessinées tournent autour de sa tête et passent derrière elle.',
+const OTHER = 0;   // le joueur dont c'est le tour, resté sur la case Départ
+const SUBJECT = 1; // celui sur qui l'effet se joue, seul sur sa case
+
+// L'effet à l'essai
+const TRIAL = {
+  title: 'Double Dé et Triple Dé',
+  type: 'dice', // type d'effet, pour Renderer3D.setFxStyle
+  // Les dessins montrés : l'actuel ('classic'), puis les propositions, numérotées
+  names: { classic: 'Symboles de dés', ...DICE_STYLES },
+  short: { classic: 'Actuel', burst: 'Jet', rain: 'Ciel', pixel: 'Pixel', split: 'Dédoublé' }, // onglets
+  notes: {
+    classic: 'Le dessin actuel : des symboles de dé tournent et rebondissent au-dessus du joueur.',
+    burst: 'De vrais dés en volume sortent du pion, montent en tournoyant et rebondissent en l’air.',
+    rain: 'Les dés tombent du ciel, rebondissent sur la case autour du pion, puis sautent vers lui.',
+    pixel: 'Des dés dessinés, animés image par image, culbutent au-dessus du pion et scintillent.',
+    split: 'Un gros dé tourne au-dessus du pion, tremble, puis éclate en deux ou trois dés.',
+  },
+  // Variante de l'effet, choisie dans la barre
+  option: { label: 'Main', values: { 2: 'Double Dé', 3: 'Triple Dé' }, initial: '2' },
+  // Mise en place de la partie factice, avant l'affichage
+  prepare() {},
+  // L'effet tel que le moteur le décrit, et le joueur qui joue la main
+  fx: option => ({ type: 'dice', count: Number(option) }),
+  playerId: SUBJECT,
 };
+
+const STYLES = Object.keys(TRIAL.names);
 // « Actuel » pour le dessin en place, un numéro pour chaque proposition
 const numberOf = style => (style === 'classic' ? 'Actuel' : String(STYLES.indexOf(style)));
 
-const CASTER = 0; // joue le Stun
-const TARGET = 1; // le reçoit
-const PLAYERS = ['Lanceur', 'Cible'].map((name, i) => ({ name, isHuman: false, color: PLAYER_COLORS[i] }));
+const PLAYERS = ['Autre', 'Joueur'].map((name, i) => ({ name, isHuman: false, color: PLAYER_COLORS[i] }));
 const SKY_SHARE = 0.4; // part du haut de la vue laissée au ciel : le pion est cadré dessous
 const SMALL_SCREEN = window.matchMedia('(max-width: 900px), (max-height: 500px)');
 
 // Réglages de la barre. `ambiance` nomme un plateau (chacun des quatre a la sienne) ; `style` est
-// le dessin montré sur petit écran.
-const state = { ambiance: 'Verger', speed: 1, mode: 'turns', style: STYLES[1] };
+// le dessin montré sur petit écran ; `option` la variante de l'effet.
+const state = { ambiance: 'Verger', speed: 1, mode: 'turns', style: STYLES[1], option: TRIAL.option.initial };
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const bench = document.getElementById('bench');
 bench.style.setProperty('--count', STYLES.length);
+document.title = `Banc d'essai - ${TRIAL.title}`;
+document.querySelector('h1').textContent = TRIAL.title;
 
 let boards = null;
 let single = false;   // petit écran : seule la première vue sert, son dessin change avec l'onglet
@@ -66,22 +81,22 @@ const views = STYLES.map(() => {
 // Vues affichées : toutes, ou la première seulement
 const shown = () => (single ? views.slice(0, 1) : views);
 
-// Donne un dessin à une vue : titre, description, et foudre jouée par sa vue 3D
+// Donne un dessin à une vue : titre, description, et dessin joué par sa vue 3D
 function assign(view, style) {
   view.style = style;
   view.el.querySelector('.num').textContent = `${numberOf(style)} · `;
-  view.el.querySelector('.name').textContent = NAMES[style];
-  view.el.querySelector('p').textContent = NOTES[style] || '';
-  if (view.renderer) view.renderer.setFxStyle(FX_TYPE, style);
+  view.el.querySelector('.name').textContent = TRIAL.names[style];
+  view.el.querySelector('p').textContent = TRIAL.notes[style] || '';
+  if (view.renderer) view.renderer.setFxStyle(TRIAL.type, style);
 }
 
-// Cadre le pion dans le bas de la vue : il reste du ciel au-dessus de lui pour voir tomber la foudre
+// Cadre le pion dans le bas de la vue : il reste du ciel au-dessus de lui pour voir l'effet
 function frame(view) {
   if (!view.renderer) return;
   view.renderer.setViewInsets({ top: Math.round(view.stage.clientHeight * SKY_SHARE), right: 0, bottom: 0, left: 0 }, true);
 }
 
-// Case ordinaire la plus proche du milieu du plateau : la cible y est seule, bien en vue
+// Case ordinaire la plus proche du milieu du plateau : le joueur y est seul, bien en vue
 function quietTile(game, renderer) {
   const centers = Object.values(renderer.tileCenters);
   const mid = {
@@ -106,17 +121,16 @@ async function buildView(view) {
   const game = new Game({ boardEntry: boards[state.ambiance], boardName: state.ambiance, players: PLAYERS, seed: 1 });
   const renderer = new Renderer3D();
   renderer.init(view.stage);
-  renderer.setFxStyle(FX_TYPE, view.style);
+  renderer.setFxStyle(TRIAL.type, view.style);
   view.renderer = renderer;
   frame(view);
   await renderer.generateBoard(game.boardData);
 
-  // Comme en partie : le joueur est déjà marqué étourdi quand l'effet se joue
-  const target = game.players[TARGET];
-  target.position = quietTile(game, renderer);
-  target.stunned = true;
+  const subject = game.players[SUBJECT];
+  subject.position = quietTile(game, renderer);
+  TRIAL.prepare(game, subject, game.players[OTHER]);
   renderer.sync(game);
-  renderer.focusTile(target.position); // la caméra s'y pose et ne suit plus personne
+  renderer.focusTile(subject.position); // la caméra s'y pose et ne suit plus personne
 }
 
 // (Re)construit les vues sur le plateau de l'ambiance choisie, puis relance la lecture
@@ -152,13 +166,13 @@ async function build() {
   }
 }
 
-// Joue la foudre dans une vue ; la promesse se termine avec l'effet
+// Joue l'effet dans une vue ; la promesse se termine avec lui
 function play(view) {
   const { renderer } = view;
   if (!renderer || building || view.playing) return Promise.resolve();
   view.playing = true;
   view.el.classList.add('playing');
-  return renderer.playEffect({ type: 'stun', targetId: TARGET }, CASTER, TIMING.announce / state.speed).then(() => {
+  return renderer.playEffect(TRIAL.fx(state.option), TRIAL.playerId, TIMING.announce / state.speed).then(() => {
     if (view.renderer !== renderer) return; // vue reconstruite entre-temps
     view.playing = false;
     view.el.classList.remove('playing');
@@ -195,10 +209,31 @@ function setEnabled(setting, enabled) {
   for (const button of document.querySelectorAll(`.seg[data-setting="${setting}"] button`)) button.disabled = !enabled;
 }
 
+function addButtons(setting, labels) {
+  const group = document.querySelector(`.seg[data-setting="${setting}"]`);
+  for (const [value, label] of Object.entries(labels)) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.value = value;
+    button.textContent = label;
+    group.append(button);
+  }
+}
+
+// Onglets des dessins (petit écran), et variantes de l'effet s'il en a
+addButtons('style', Object.fromEntries(STYLES.map((style, i) => [style, style === 'classic' ? TRIAL.short[style] : `${i} ${TRIAL.short[style]}`])));
+if (TRIAL.option) {
+  document.getElementById('option-label').textContent = TRIAL.option.label;
+  addButtons('option', TRIAL.option.values);
+} else {
+  document.getElementById('option-group').hidden = true;
+}
+
 const applied = {
   ambiance: build,
   mode: loop,
   speed() {},
+  option() {}, // prise en compte à la prochaine lecture
   // Onglet d'un dessin (petit écran) : la vue le joue dès que l'effet en cours est fini
   style() {
     if (!single) return;
@@ -206,15 +241,6 @@ const applied = {
     loop();
   },
 };
-
-const styleTabs = document.querySelector('.seg[data-setting="style"]');
-STYLES.forEach((style, i) => {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.dataset.value = style;
-  button.textContent = style === 'classic' ? SHORT[style] : `${i} ${SHORT[style]}`;
-  styleTabs.append(button);
-});
 
 for (const group of document.querySelectorAll('.seg')) {
   const { setting } = group.dataset;
@@ -231,7 +257,7 @@ for (const group of document.querySelectorAll('.seg')) {
   });
 }
 
-// Téléphone tourné, fenêtre redimensionnée : on passe d'une vue à quatre, ou l'inverse
+// Téléphone tourné, fenêtre redimensionnée : on passe d'une vue à plusieurs, ou l'inverse
 SMALL_SCREEN.addEventListener('change', () => {
   if (boards) build();
 });
