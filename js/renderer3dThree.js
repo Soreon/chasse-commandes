@@ -14,6 +14,7 @@ import { buildEnvironment } from './environment.js';
 import { buildBeam } from './teleportBeams.js';
 import { pixelLabelCanvas } from './pixelLabel.js';
 import { buildPawn, PAWN_HEIGHT } from './pawn.js';
+import { buildLightning, DEFAULT_LIGHTNING } from './lightning.js';
 
 const TILE_SIZE = 1;
 const TILE_HEIGHT = 1;
@@ -84,6 +85,10 @@ const lerp = (a, b, t) => a + (b - a) * t;
 // Apparition puis disparition en douceur sur la durée d'un effet (0 -> 1 -> 0)
 const envelope = t => clamp01(Math.min(t / 0.15, (1 - t) / 0.15));
 
+// Stun : part de l'effet prise par la foudre, puis moment où les étoiles se mettent à tourner
+const STRIKE_SHARE = 0.42;
+const STUN_STARS_AT = 0.36;
+
 // Déplacement toléré, en pixels, pour qu'un appui compte encore comme un clic
 const TAP_SLACK_MOUSE = 5;
 const TAP_SLACK_TOUCH = 12;
@@ -113,6 +118,8 @@ export class Renderer3D {
     this.tokens = {};          // id de joueur -> { mesh, badge, badgeKey, baseY, animating }
     this.currentRing = null;
     this.currentPlayerId = null;
+    this.lightningStyle = DEFAULT_LIGHTNING; // dessin de la foudre du Stun
+    this._lightFactor = 1;                   // la foudre assombrit puis illumine la scène
 
     this._textures = {};
     this._labelTextures = new Map();
@@ -924,9 +931,16 @@ export class Renderer3D {
       ? this.environment.lighting
       : { ambient: '#ffffff', ambientIntensity: 1.8, light: '#ffffff', lightIntensity: 2.5 };
     this.ambientLight.color.set(lighting.ambient);
-    this.ambientLight.intensity = lighting.ambientIntensity;
+    this.ambientLight.intensity = lighting.ambientIntensity * this._lightFactor;
     this.dirLight.color.set(lighting.light);
-    this.dirLight.intensity = lighting.lightIntensity;
+    this.dirLight.intensity = lighting.lightIntensity * this._lightFactor;
+  }
+
+  // Assombrit ou illumine toute la scène (1 : la lumière normale de l'ambiance)
+  _setLightFactor(factor) {
+    if (factor === this._lightFactor) return;
+    this._lightFactor = factor;
+    this._applyLighting();
   }
 
   // Active ou coupe le suivi automatique du joueur dont c'est le tour
@@ -1575,8 +1589,8 @@ export class Renderer3D {
   _buildFx(fx, playerId) {
     const builders = {
       magnet: () => this._fxMagnet(fx, playerId),
-      stun: () => this._fxOrbit([fx.targetId], ['💫', '💫', '💫'], { bolt: true }),
-      confuse: () => this._fxOrbit(fx.targetIds || [], ['❓', '💫', '❓'], {}),
+      stun: () => this._fxStun(fx.targetId),
+      confuse: () => this._fxOrbit(fx.targetIds || [], ['❓', '💫', '❓']),
       dice: () => this._fxDice(fx, playerId),
       shield: () => this._fxShield(playerId),
       navigator: () => this._fxNavigator(playerId),
@@ -1640,26 +1654,73 @@ export class Renderer3D {
     };
   }
 
+  // Choisit le dessin de la foudre du Stun (voir LIGHTNING_STYLES dans lightning.js)
+  setLightningStyle(style) {
+    this.lightningStyle = style;
+  }
+
+  // Stun : la foudre tombe du ciel sur le joueur visé, qui sursaute ; puis des étoiles tournent
+  // au-dessus de sa tête pendant qu'il vacille
+  _fxStun(targetId) {
+    const stars = ['💫', '💫', '💫'];
+    const token = this.tokens[targetId];
+    if (!token) return this._fxOrbit([targetId], stars);
+
+    const { mesh } = token;
+    const size = mesh.scale.x;
+    const strike = buildLightning(this.lightningStyle, {
+      top: new THREE.Vector3(mesh.position.x, token.baseY + PAWN_HEIGHT * size, mesh.position.z),
+      ground: token.baseY,
+      right: new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).setY(0).normalize(),
+    });
+    this.fxGroup.add(strike.group);
+    const orbit = this._fxOrbit([targetId], stars, { startAt: STUN_STARS_AT });
+    // Matières du pion (les siennes seulement) : elles blanchissent à chaque éclair
+    const materials = new Set();
+    mesh.traverse((part) => {
+      if (part.isMesh && part.material.emissive) materials.add(part.material);
+    });
+
+    return {
+      update: (k) => {
+        const t = clamp01(k / STRIKE_SHARE);
+        const glow = strike.update(t);
+        orbit.update(k);
+        // Le temps de la frappe, le ciel s'assombrit ; chaque éclair illumine la scène et le pion
+        this._setLightFactor(1 - 0.3 * Math.sin(Math.PI * t) + 0.75 * glow);
+        for (const material of materials) material.emissive.setScalar(0.7 * glow);
+        if (k < STUN_STARS_AT) {
+          // Frappé, le pion s'aplatit et tressaute
+          const hit = glow >= 0.5;
+          mesh.scale.set(size * (hit ? 1.14 : 1), size * (hit ? 0.84 : 1), size * (hit ? 1.14 : 1));
+          mesh.rotation.z = hit ? Math.sign(Math.sin(k * 300)) * 0.16 : 0;
+        } else {
+          mesh.scale.setScalar(size);
+        }
+      },
+      cleanup: () => {
+        orbit.cleanup();
+        strike.dispose();
+        this._setLightFactor(1);
+        for (const material of materials) material.emissive.setScalar(0);
+        mesh.scale.setScalar(size);
+      },
+    };
+  }
+
   // Stun et Confusion : des symboles tournent au-dessus de la tête des joueurs visés, dont le pion
-  // vacille. Pour le Stun, un éclair tombe d'abord.
-  _fxOrbit(targetIds, symbols, { bolt = false }) {
+  // vacille. Ils attendent `startAt` (part de l'effet) avant d'apparaître.
+  _fxOrbit(targetIds, symbols, { startAt = 0 } = {}) {
     const targets = targetIds.map(id => ({ token: this.tokens[id], head: this._headOf(id) })).filter(t => t.token && t.head);
     const groups = targets.map(target => ({
       ...target,
-      bolt: bolt ? this._fxSymbol('⚡', 1.0) : null,
       items: symbols.map(symbol => this._fxSymbol(symbol, 0.32)),
     }));
-    const startAt = bolt ? 0.22 : 0;
 
     return {
       update: (k) => {
         for (const group of groups) {
           const { head } = group;
-          if (group.bolt) {
-            const drop = clamp01(k / startAt);
-            group.bolt.position.set(head.x, head.y + 0.3 + (1 - drop) * 2.6, head.z);
-            this._fxScale(group.bolt, k < 0.3 ? 1 : clamp01(1 - (k - 0.3) / 0.12));
-          }
           const t = clamp01((k - startAt) / (1 - startAt));
           group.items.forEach((item, i) => {
             const angle = t * Math.PI * 5 + (i / group.items.length) * Math.PI * 2;
